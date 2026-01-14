@@ -1,0 +1,991 @@
+Product_ID,Product_Name,Category,Warehouse_Location,Stock_Quantity,Reorder_Level,Reorder_Quantity,Status
+29-017-6255,Bell Pepper,Fruits & Vegetables,20 Pennsylvania Parkway,46,64,17,Discontinued
+79-569-8856,Vegetable Oil,Oils & Fats,03643 Oakridge Lane,51,87,86,Backordered
+28-146-2641,Parmesan Cheese,Dairy,73 Graedel Street,38,67,66,Discontinued
+11-581-9869,Carrot,Fruits & Vegetables,44801 Myrtle Center,51,60,98,Discontinued
+13-202-4809,Garlic,Fruits & Vegetables,6195 Monterey Center,27,22,89,Discontinued
+70-145-2550,Lemon,Fruits & Vegetables,5141 Anniversary Crossing,91,6,37,Backordered
+10-626-8536,Coconut Sugar,Grains & Pulses,38583 2nd Pass,17,85,74,Active
+42-879-9478,Anchovies,Seafood,86 Porter Junction,81,22,20,Discontinued
+82-380-5378,Cheese,Dairy,05518 Saint Paul Street,78,24,31,Active
+23-265-8144,Yogurt,Dairy,14042 Dottie Avenue,55,50,56,Backordered
+62-393-9939,Cheddar Cheese,Dairy,5 Oxford Pass,60,9,89,Active
+90-343-9640,Avocado Oil,Oils & Fats,3622 Anhalt Lane,53,89,100,Backordered
+36-899-5324,Orange,Fruits & Vegetables,3 Bashford Court,94,58,17,Backordered
+41-538-3129,Digestive Biscuit,Bakery,2 Carioca Crossing,77,79,65,Backordered
+47-843-8207,Cauliflower,Fruits & Vegetables,01 Northfield Road,34,92,26,Active
+94-071-2261,Pear,Fruits & Vegetables,2004 Cody Plaza,79,37,98,Discontinued
+12-998-3882,Egg (Turkey),Dairy,94862 Beilfuss Terrace,76,54,76,Backordered
+36-127-4273,Ricotta Cheese,Dairy,10342 Division Place,50,46,38,Active
+13-144-2169,Eggplant,Fruits & Vegetables,52 Namekagon Junction,25,62,11,Backordered
+86-978-6666,Whole Wheat Flour,Grains & Pulses,21343 Brentwood Circle,38,43,28,Backordered
+40-681-9981,Arabica Coffee,Beverages,36 3rd Place,45,77,2,Discontinued
+13-962-6263,Sweet Potato,Fruits & Vegetables,7015 Ramsey Lane,49,1,28,Active
+10-002-6494,Mango,Fruits & Vegetables,48 Vahlen Place,89,92,62,Backordered
+29-741-8132,Kale,Fruits & Vegetables,85 Farwell Parkway,47,22,69,Backordered
+30-806-3823,Jasmine Rice,Grains & Pulses,07 Pankratz Point,53,26,3,Active
+71-074-6292,Sourdough Bread,Bakery,338 Annamark Court,65,79,49,Discontinued
+95-738-4658,Green Coffee,Beverages,35 Golf Course Alley,90,68,74,Backordered
+55-154-4728,Arabica Coffee,Beverages,96 Westridge Junction,65,63,41,Backordered
+46-255-3073,Tilapia,Seafood,57 Eastwood Junction,30,42,8,Active
+95-640-0293,Arborio Rice,Grains & Pulses,31 Sullivan Hill,34,32,22,Active
+45-250-4679,Bread Flour,Grains & Pulses,49148 Meadow Ridge Way,54,78,81,Backordered
+03-833-3577,Cucumber,Fruits & Vegetables,38 Killdeer Point,67,14,25,Active
+08-961-3009,Cheese,Dairy,01 Gateway Plaza,50,14,6,Backordered
+20-405-4865,Milk,Dairy,36483 Burning Wood Pass,13,39,98,Backordered
+49-377-9731,Lime,Fruits & Vegetables,3 Meadow Valley Court,18,8,68,Backordered
+39-810-2042,Rice Flour,Grains & Pulses,47817 Oneill Park,24,2,49,Active
+53-805-9523,Sourdough Bread,Bakery,94 Mallory Center,40,30,65,Active
+14-305-5348,Cheese,Dairy,19 Shoshone Circle,53,63,2,Active
+51-459-5630,Sour Cream,Dairy,805 Center Parkway,11,30,4,Active
+88-183-5781,Whole Wheat Bread,Bakery,46 Delaware Place,17,63,3,Backordered
+41-735-9837,Robusta Coffee,Beverages,2374 Chive Court,14,77,78,Discontinued
+88-977-0175,Chocolate Biscuit,Bakery,7561 5th Terrace,100,1,26,Active
+66-327-2821,Palm Oil,Oils & Fats,703 Hermina Center,67,57,36,Active
+08-114-3922,Anchovies,Seafood,709 Vidon Avenue,60,64,36,Discontinued
+95-090-2788,Sesame Oil,Oils & Fats,0313 Rockefeller Street,45,7,58,Discontinued
+26-690-3784,Lettuce,Fruits & Vegetables,19069 Cordelia Drive,58,5,1,Active
+46-753-8430,Feta Cheese,Dairy,60356 Derek Lane,98,77,7,Discontinued
+15-905-7750,Apricot,Fruits & Vegetables,36687 Maple Avenue,42,61,52,Backordered
+11-891-8213,Peanut Oil,Oils & Fats,13 Westport Hill,38,62,47,Discontinued
+82-811-7988,Olive Oil,Oils & Fats,65 Chinook Circle,36,3,54,Discontinued
+31-746-4951,Whole Wheat Flour,Grains & Pulses,759 Waywood Court,67,60,21,Active
+97-300-7511,Egg (Duck),Dairy,45190 Fordem Court,37,53,61,Backordered
+88-304-2855,Pineapple,Fruits & Vegetables,0 Delladonna Place,20,51,33,Active
+53-008-2419,Jasmine Rice,Grains & Pulses,63 Debra Park,62,36,96,Discontinued
+76-340-4432,Cucumber,Fruits & Vegetables,157 David Center,19,36,72,Backordered
+26-010-9519,Trout,Seafood,4508 Shopko Trail,29,72,96,Active
+08-940-8578,Onion,Fruits & Vegetables,74 Menomonie Point,34,29,65,Discontinued
+54-374-9986,Cream,Dairy,74997 Katie Terrace,92,52,80,Discontinued
+67-625-9704,Sardines,Seafood,7819 Fallview Park,33,18,92,Discontinued
+56-635-6764,Sourdough Bread,Bakery,744 Green Center,12,59,62,Backordered
+10-445-0741,Anchovies,Seafood,31 Loomis Park,83,17,39,Active
+76-584-4790,Peanut Oil,Oils & Fats,1170 Shasta Circle,21,52,80,Backordered
+57-437-1828,Plum,Fruits & Vegetables,15068 Scoville Court,37,30,74,Backordered
+62-777-6010,Sushi Rice,Grains & Pulses,5743 Superior Place,77,20,37,Backordered
+06-955-3428,Black Rice,Grains & Pulses,3296 Walton Court,30,38,83,Backordered
+04-758-0410,Wild Rice,Grains & Pulses,5 Toban Circle,26,21,47,Discontinued
+06-655-5498,Wild Rice,Grains & Pulses,8569 Bashford Court,72,82,52,Backordered
+76-401-7083,Pomegranate,Fruits & Vegetables,31892 Pennsylvania Street,59,79,87,Active
+30-429-2162,Black Rice,Grains & Pulses,6382 Anniversary Pass,34,96,76,Discontinued
+49-730-0159,Cream,Dairy,09189 2nd Drive,82,3,82,Active
+31-745-6850,Cabbage,Fruits & Vegetables,081 Jana Lane,94,90,12,Active
+69-468-5468,Sourdough Bread,Bakery,72083 Acker Crossing,59,78,6,Active
+68-636-4774,Carrot,Fruits & Vegetables,7744 Oxford Pass,18,50,77,Active
+21-120-6238,All-Purpose Flour,Grains & Pulses,050 Mcbride Avenue,55,33,14,Discontinued
+92-995-8689,Cheddar Cheese,Dairy,1 Merchant Circle,31,65,94,Backordered
+15-045-8444,Green Coffee,Beverages,97 Thierer Terrace,27,12,93,Discontinued
+73-567-6194,Whipped Cream,Dairy,069 Basil Center,76,81,85,Active
+48-242-8445,Plum,Fruits & Vegetables,29 Vera Drive,40,3,5,Discontinued
+33-507-9886,Pineapple,Fruits & Vegetables,0584 Lindbergh Alley,68,25,16,Active
+80-025-6757,Grapes,Fruits & Vegetables,183 Algoma Trail,59,29,100,Discontinued
+36-296-9609,Sunflower Oil,Oils & Fats,7 Rutledge Pass,24,35,14,Backordered
+56-054-8664,Lemon,Fruits & Vegetables,01 Straubel Hill,59,82,69,Discontinued
+64-478-4745,Lemon,Fruits & Vegetables,208 Miller Court,63,81,94,Active
+67-546-1568,Peanut Oil,Oils & Fats,203 Mariners Cove Junction,57,36,53,Backordered
+10-218-2680,Egg (Turkey),Dairy,6810 Aberg Junction,39,93,57,Backordered
+46-520-1819,Short Grain Rice,Grains & Pulses,805 Nancy Crossing,41,36,78,Backordered
+87-791-5803,Tuna,Seafood,8 Fremont Circle,25,44,96,Active
+71-436-5841,Cauliflower,Fruits & Vegetables,52 Victoria Plaza,87,91,94,Discontinued
+07-679-1199,Onion,Fruits & Vegetables,1991 Kropf Way,20,65,61,Active
+48-957-8596,Banana,Fruits & Vegetables,3825 Raven Avenue,95,25,91,Discontinued
+20-325-1965,Coconut,Fruits & Vegetables,78884 Union Street,56,75,13,Backordered
+51-069-0489,Bread Flour,Grains & Pulses,3 Anthes Place,96,83,50,Discontinued
+17-493-4579,Almond Flour,Grains & Pulses,4627 Amoth Circle,76,8,2,Active
+46-622-3434,Jasmine Rice,Grains & Pulses,2 Miller Lane,17,19,74,Discontinued
+05-899-1428,Avocado Oil,Oils & Fats,591 Maple Junction,14,75,10,Active
+60-632-8752,Chocolate Biscuit,Bakery,48 Golf View Pass,96,16,48,Active
+65-854-9364,Black Rice,Grains & Pulses,752 Mccormick Way,30,34,96,Backordered
+66-268-8345,Greek Yogurt,Dairy,550 Clemons Plaza,91,84,11,Active
+13-673-7016,Peach,Fruits & Vegetables,04 Hagan Crossing,47,67,57,Backordered
+20-054-3716,Chocolate Biscuit,Bakery,39 Lakewood Gardens Center,11,6,100,Discontinued
+11-073-0189,Plum,Fruits & Vegetables,5104 Jana Court,95,50,76,Active
+40-793-7235,Sour Cream,Dairy,68086 Crowley Circle,92,67,51,Discontinued
+56-894-3733,Yogurt,Dairy,897 Independence Circle,85,83,13,Backordered
+83-117-7658,Asparagus,Fruits & Vegetables,0282 Emmet Hill,92,3,81,Backordered
+72-989-2512,Mushrooms,Fruits & Vegetables,61 Waubesa Court,24,21,4,Backordered
+58-229-1358,Cream,Dairy,1 Lillian Plaza,21,24,2,Backordered
+28-275-5901,Anchovies,Seafood,4 Doe Crossing Avenue,64,1,92,Active
+85-806-8672,Black Tea,Beverages,24 South Trail,35,88,87,Active
+65-718-0492,Olive Oil,Oils & Fats,8626 Chinook Parkway,100,92,26,Active
+86-482-6451,White Tea,Beverages,5501 Fuller Way,91,78,61,Backordered
+48-289-0604,Vegetable Oil,Oils & Fats,5 Colorado Park,18,72,71,Active
+21-809-7115,White Rice,Grains & Pulses,3053 Sachs Center,80,86,50,Discontinued
+84-269-9130,Long Grain Rice,Grains & Pulses,49263 Graceland Pass,11,10,80,Discontinued
+54-758-4622,Chocolate Biscuit,Bakery,865 Eagle Crest Park,99,3,79,Backordered
+65-867-4029,Peach,Fruits & Vegetables,36124 Carberry Junction,40,83,50,Active
+24-310-9184,Rye Bread,Bakery,6 Haas Circle,69,65,91,Backordered
+53-930-2215,Egg (Goose),Dairy,292 Utah Street,60,43,32,Active
+94-598-3383,Brown Rice,Grains & Pulses,7403 Fuller Hill,79,38,67,Discontinued
+83-625-3618,Asparagus,Fruits & Vegetables,2696 Katie Road,68,12,73,Backordered
+13-844-2178,Sardines,Seafood,86207 Tennyson Parkway,44,67,48,Active
+05-184-4175,Black Coffee,Beverages,57 Di Loreto Circle,40,30,60,Active
+89-335-0155,Brown Rice,Grains & Pulses,9 Kipling Road,46,81,47,Active
+38-417-4656,White Sugar,Grains & Pulses,1309 Elka Junction,24,69,2,Backordered
+74-305-1263,Green Coffee,Beverages,744 Lakewood Gardens Crossing,29,91,48,Active
+02-508-3777,Egg (Quail),Dairy,895 Northland Hill,97,88,81,Discontinued
+79-136-9840,Herbal Tea,Beverages,26175 Oxford Way,77,45,75,Discontinued
+35-299-0889,Coconut Oil,Oils & Fats,95 Packers Lane,33,78,79,Discontinued
+41-594-5069,Egg (Duck),Dairy,9 Clemons Hill,77,1,41,Discontinued
+83-553-9523,Buttermilk,Dairy,84336 Haas Place,28,90,70,Active
+44-112-3331,Tuna,Seafood,63787 Arkansas Street,85,17,96,Discontinued
+93-198-5984,Mango,Fruits & Vegetables,54706 Prairieview Point,73,69,1,Active
+73-874-7534,Pomegranate,Fruits & Vegetables,901 Norway Maple Crossing,88,24,44,Backordered
+18-107-7886,Evaporated Milk,Dairy,55309 6th Junction,64,28,35,Active
+63-956-0739,Robusta Coffee,Beverages,6808 Chinook Parkway,68,12,42,Backordered
+26-177-5690,Cucumber,Fruits & Vegetables,61707 Mariners Cove Park,85,33,50,Discontinued
+47-749-3277,Powdered Sugar,Grains & Pulses,502 Sachs Circle,46,20,30,Backordered
+57-763-5501,Cod,Seafood,46 Colorado Place,72,29,10,Discontinued
+90-230-9767,Long Grain Rice,Grains & Pulses,00397 Bay Terrace,67,88,32,Discontinued
+19-214-5762,Pear,Fruits & Vegetables,7 Bonner Terrace,41,52,75,Backordered
+74-642-2435,Cauliflower,Fruits & Vegetables,6292 Chive Street,66,31,18,Backordered
+47-221-3391,Black Coffee,Beverages,0023 Upham Road,78,38,27,Active
+87-104-0187,Whole Wheat Flour,Grains & Pulses,0 Moose Lane,86,100,78,Backordered
+87-272-6544,Egg (Goose),Dairy,4 Nelson Alley,90,3,49,Discontinued
+06-340-6856,Wild Rice,Grains & Pulses,84 Rusk Terrace,41,56,12,Active
+80-020-8041,Black Rice,Grains & Pulses,662 Vernon Point,11,58,26,Active
+48-461-3742,Kiwi,Fruits & Vegetables,42719 Milwaukee Avenue,37,8,50,Discontinued
+78-362-8578,Lemon,Fruits & Vegetables,86 Corben Crossing,72,32,80,Backordered
+60-550-4771,Haddock,Seafood,1 Monica Lane,75,80,87,Backordered
+11-155-7826,Arabica Coffee,Beverages,321 Barby Parkway,98,83,5,Active
+42-907-6946,Coconut Oil,Oils & Fats,093 Anhalt Crossing,90,75,6,Active
+99-048-8310,Tomato,Fruits & Vegetables,43 Lakewood Junction,32,49,73,Discontinued
+85-440-3667,Gouda Cheese,Dairy,6151 Forster Drive,68,29,31,Backordered
+93-571-7294,Sushi Rice,Grains & Pulses,76 Fisk Park,78,94,7,Backordered
+82-977-7752,Spinach,Fruits & Vegetables,58 Corscot Terrace,88,78,17,Active
+76-476-9996,Chocolate Biscuit,Bakery,0 Larry Terrace,37,96,82,Backordered
+50-679-2072,Canola Oil,Oils & Fats,20 Butterfield Lane,97,32,43,Active
+50-329-3145,Milk,Dairy,591 Maple Wood Drive,12,54,48,Backordered
+52-392-5312,All-Purpose Flour,Grains & Pulses,336 Old Shore Lane,50,42,20,Active
+47-663-5703,Basmati Rice,Grains & Pulses,6500 Raven Drive,15,49,40,Discontinued
+58-122-2282,Black Tea,Beverages,96 American Ash Center,59,20,17,Discontinued
+84-151-2114,Brown Rice,Grains & Pulses,12 Rigney Street,39,57,54,Active
+93-682-2069,Lime,Fruits & Vegetables,2718 Londonderry Plaza,76,39,15,Backordered
+48-789-9187,Peach,Fruits & Vegetables,41 Stephen Crossing,45,79,95,Backordered
+85-806-0613,Oatmeal Biscuit,Bakery,9269 Main Trail,41,21,47,Active
+19-244-9890,Herbal Tea,Beverages,620 Mockingbird Pass,61,22,98,Active
+60-285-3783,Mushrooms,Fruits & Vegetables,37973 Parkside Junction,51,62,95,Active
+34-547-0827,White Rice,Grains & Pulses,18 Comanche Junction,54,53,33,Backordered
+06-731-2162,Lemon,Fruits & Vegetables,30968 Anzinger Court,87,1,98,Discontinued
+48-193-1199,Canola Oil,Oils & Fats,339 Paget Place,46,51,92,Discontinued
+40-003-7322,White Sugar,Grains & Pulses,2693 6th Court,13,32,79,Discontinued
+91-417-0366,Grapes,Fruits & Vegetables,1 Elmside Parkway,25,74,100,Discontinued
+24-571-1080,Kale,Fruits & Vegetables,5325 Milwaukee Lane,60,15,89,Discontinued
+22-083-3347,Long Grain Rice,Grains & Pulses,38 Superior Road,69,82,58,Discontinued
+09-101-1740,Sushi Rice,Grains & Pulses,96629 Nova Plaza,36,81,54,Discontinued
+17-274-6898,Whole Wheat Bread,Bakery,657 Texas Street,36,53,92,Backordered
+38-655-2312,Kale,Fruits & Vegetables,17 Reinke Circle,79,74,87,Backordered
+60-327-4114,Egg (Turkey),Dairy,3 Bellgrove Way,63,7,23,Active
+54-281-3746,Green Beans,Fruits & Vegetables,00 Ridgeway Plaza,26,70,52,Discontinued
+25-349-7974,Spinach,Fruits & Vegetables,42 Bunker Hill Junction,72,70,99,Discontinued
+16-380-0753,Apricot,Fruits & Vegetables,701 Logan Court,38,22,71,Active
+38-049-9319,Oatmeal Biscuit,Bakery,6 Lillian Junction,82,6,53,Active
+50-329-3360,Wild Rice,Grains & Pulses,72 Crownhardt Circle,19,77,66,Active
+19-610-2236,Whole Wheat Bread,Bakery,8524 Shelley Way,58,48,9,Active
+46-632-8420,Whipped Cream,Dairy,9 Meadow Ridge Center,98,24,4,Active
+14-836-2894,Apple,Fruits & Vegetables,2 Hooker Terrace,44,92,92,Active
+08-196-2703,Peas,Fruits & Vegetables,56 Esker Park,100,52,2,Backordered
+87-097-5691,Robusta Coffee,Beverages,236 Gateway Lane,62,78,97,Discontinued
+04-453-5485,Tomato,Fruits & Vegetables,2 Sunbrook Lane,84,20,58,Backordered
+82-678-8097,Cottage Cheese,Dairy,6172 Hovde Circle,68,82,58,Backordered
+43-703-9939,Pineapple,Fruits & Vegetables,4 Sundown Place,55,91,35,Active
+28-433-8533,Multigrain Bread,Bakery,8 Mayer Trail,87,70,77,Active
+74-234-0628,Almond Flour,Grains & Pulses,2 Veith Crossing,12,56,92,Active
+02-888-9412,Cauliflower,Fruits & Vegetables,880 Calypso Road,95,66,69,Backordered
+80-658-6456,Mango,Fruits & Vegetables,44051 Old Shore Junction,84,9,46,Backordered
+70-587-1204,Black Rice,Grains & Pulses,2446 Anhalt Way,68,68,97,Discontinued
+88-951-9038,Black Coffee,Beverages,5 Anderson Trail,11,72,5,Active
+45-317-9731,Palm Oil,Oils & Fats,70156 7th Junction,44,83,78,Discontinued
+63-874-9747,Orange,Fruits & Vegetables,183 Buell Park,36,59,90,Discontinued
+44-546-5713,Peach,Fruits & Vegetables,832 Goodland Alley,94,69,68,Discontinued
+23-070-2433,Powdered Sugar,Grains & Pulses,836 Brown Alley,68,7,37,Discontinued
+91-257-3672,Tilapia,Seafood,10997 Dexter Parkway,78,75,3,Active
+69-561-2496,Banana,Fruits & Vegetables,154 Delladonna Hill,82,29,62,Backordered
+87-013-6488,Sushi Rice,Grains & Pulses,07855 Goodland Lane,22,10,53,Active
+31-969-4614,Arabica Coffee,Beverages,993 Kensington Drive,62,89,6,Discontinued
+96-209-1739,Evaporated Milk,Dairy,779 Ridgeway Street,70,81,75,Backordered
+20-022-3173,Bread Flour,Grains & Pulses,81878 Nobel Point,21,63,65,Discontinued
+44-552-3909,Pear,Fruits & Vegetables,6 Charing Cross Circle,61,50,9,Active
+40-902-1995,Asparagus,Fruits & Vegetables,1519 Delaware Court,46,88,20,Backordered
+07-846-4804,Jasmine Rice,Grains & Pulses,2 Fair Oaks Pass,20,25,73,Discontinued
+17-504-3699,Sweet Potato,Fruits & Vegetables,18 Daystar Parkway,80,60,71,Active
+55-522-8242,Whipped Cream,Dairy,7 Spohn Avenue,29,36,40,Backordered
+17-022-9721,Apple,Fruits & Vegetables,39 Dahle Alley,43,63,99,Discontinued
+03-940-0630,Sunflower Oil,Oils & Fats,27408 Burning Wood Street,23,43,75,Discontinued
+71-594-6552,Long Grain Rice,Grains & Pulses,3 Westerfield Crossing,12,59,62,Active
+20-225-3930,White Tea,Beverages,5756 Stephen Avenue,99,87,10,Active
+53-151-5726,Grapes,Fruits & Vegetables,84239 Meadow Vale Trail,37,45,62,Backordered
+77-777-4536,Basmati Rice,Grains & Pulses,4784 Farmco Alley,26,67,46,Backordered
+07-834-3320,Egg (Quail),Dairy,79 Monterey Avenue,94,60,78,Active
+51-761-6320,Egg (Goose),Dairy,587 Vermont Terrace,43,78,85,Backordered
+34-291-4939,Digestive Biscuit,Bakery,983 Sommers Circle,34,49,27,Discontinued
+67-025-1245,Cabbage,Fruits & Vegetables,51890 Lindbergh Terrace,88,46,55,Active
+63-936-0145,Plum,Fruits & Vegetables,95 Kingsford Terrace,22,56,72,Discontinued
+27-495-1912,Potato,Fruits & Vegetables,12710 Gulseth Circle,26,63,88,Active
+47-554-5780,Haddock,Seafood,1 Westport Crossing,93,62,65,Active
+21-013-3508,Cabbage,Fruits & Vegetables,84305 Fair Oaks Plaza,12,95,49,Backordered
+39-913-2999,Evaporated Milk,Dairy,15 Oriole Park,23,99,97,Discontinued
+82-395-5070,Chocolate Biscuit,Bakery,43442 Homewood Street,75,81,17,Active
+62-100-2245,Sourdough Bread,Bakery,56830 Fremont Road,22,60,73,Backordered
+09-712-3630,Grapes,Fruits & Vegetables,10 Golf Course Hill,87,62,2,Backordered
+25-010-9478,Eggplant,Fruits & Vegetables,357 Maple Park,74,30,24,Active
+03-919-9890,Halibut,Seafood,7 Riverside Road,47,29,70,Active
+61-293-6327,Salmon,Seafood,4353 Dixon Circle,98,67,49,Active
+08-519-5579,Broccoli,Fruits & Vegetables,89 Karstens Alley,35,4,76,Discontinued
+00-366-9496,Grapes,Fruits & Vegetables,898 Rowland Trail,30,66,28,Active
+28-840-6096,Pomegranate,Fruits & Vegetables,92655 Pond Park,19,65,48,Discontinued
+04-542-3863,Bread Flour,Grains & Pulses,403 Loomis Way,34,46,45,Backordered
+18-199-5799,Cheddar Cheese,Dairy,87784 Blaine Way,40,81,40,Backordered
+56-875-3717,Brown Rice,Grains & Pulses,32 Cottonwood Pass,89,54,15,Active
+25-522-6043,Gouda Cheese,Dairy,890 Eggendart Pass,71,93,75,Discontinued
+27-459-0724,Feta Cheese,Dairy,4 Duke Way,91,7,64,Discontinued
+75-080-4909,Corn Oil,Oils & Fats,7 Gateway Center,20,55,15,Backordered
+07-970-9352,Bell Pepper,Fruits & Vegetables,459 Gateway Pass,96,33,72,Active
+26-134-9069,Whipped Cream,Dairy,4929 Westend Point,14,87,8,Active
+08-396-2704,White Sugar,Grains & Pulses,160 Crowley Center,42,12,28,Discontinued
+24-975-4231,Green Beans,Fruits & Vegetables,62494 Longview Drive,31,61,28,Active
+28-197-9246,Powdered Sugar,Grains & Pulses,8499 Hanover Terrace,47,30,16,Active
+77-013-1553,Canola Oil,Oils & Fats,48788 Chinook Place,79,31,66,Discontinued
+83-716-2177,Halibut,Seafood,26266 Esker Point,18,46,26,Backordered
+55-164-7723,Halibut,Seafood,6410 Northwestern Pass,82,31,86,Active
+22-778-3553,Cheddar Cheese,Dairy,0782 Dapin Avenue,36,77,49,Active
+14-331-3739,Avocado Oil,Oils & Fats,8 Thackeray Drive,24,89,27,Discontinued
+47-578-4161,Anchovies,Seafood,5 Forest Run Way,88,56,81,Discontinued
+59-857-6577,Evaporated Milk,Dairy,230 Tony Court,23,100,77,Discontinued
+02-559-8196,Mango,Fruits & Vegetables,545 Linden Alley,61,14,49,Discontinued
+13-900-9016,Bell Pepper,Fruits & Vegetables,521 Burning Wood Trail,89,96,94,Discontinued
+15-144-9413,Strawberries,Fruits & Vegetables,3 Buhler Place,58,15,87,Backordered
+65-527-9488,Grapes,Fruits & Vegetables,23704 Algoma Park,38,72,39,Active
+74-818-3306,Spinach,Fruits & Vegetables,62 Thackeray Center,45,70,98,Backordered
+60-198-7050,Green Tea,Beverages,5306 Arkansas Avenue,26,59,54,Active
+82-041-7211,Swiss Cheese,Dairy,285 1st Park,49,49,26,Discontinued
+17-002-4721,Green Beans,Fruits & Vegetables,379 Duke Court,31,55,5,Active
+74-404-0582,Cherry,Fruits & Vegetables,07 Maple Wood Drive,57,82,59,Active
+73-561-2867,Sourdough Bread,Bakery,7444 Saint Paul Circle,12,86,98,Discontinued
+45-194-4094,Plum,Fruits & Vegetables,2 Scofield Street,64,71,69,Active
+92-362-3567,Tomato,Fruits & Vegetables,826 Melvin Pass,11,10,60,Discontinued
+96-961-2193,Jasmine Rice,Grains & Pulses,63578 Butternut Hill,46,39,11,Active
+92-652-3737,Zucchini,Fruits & Vegetables,66330 Northridge Street,89,56,74,Backordered
+89-673-1543,Digestive Biscuit,Bakery,297 Petterle Way,72,78,1,Discontinued
+70-815-4015,Butter Biscuit,Bakery,175 Sycamore Circle,38,93,61,Active
+90-737-0044,Black Rice,Grains & Pulses,92321 Nelson Trail,79,98,97,Backordered
+67-473-7093,Black Tea,Beverages,87417 Forest Pass,56,12,85,Active
+22-621-2774,Strawberries,Fruits & Vegetables,00 Drewry Court,54,26,16,Active
+15-240-6267,Eggplant,Fruits & Vegetables,25784 Old Gate Crossing,91,55,94,Active
+75-152-8731,Pear,Fruits & Vegetables,622 Anthes Lane,82,65,69,Backordered
+40-913-9772,Egg (Chicken),Dairy,553 Hooker Trail,36,30,44,Backordered
+29-377-7040,Short Grain Rice,Grains & Pulses,9431 Clarendon Pass,22,77,15,Active
+72-780-6006,Sunflower Oil,Oils & Fats,88721 Dawn Crossing,87,24,19,Discontinued
+91-127-7489,Orange,Fruits & Vegetables,43211 Anzinger Drive,44,8,52,Active
+17-647-0503,Cod,Seafood,0 Village Green Street,96,12,8,Active
+91-848-0606,Onion,Fruits & Vegetables,13 Corscot Hill,39,22,73,Active
+11-745-3025,Peach,Fruits & Vegetables,3104 Ridge Oak Hill,15,27,21,Backordered
+29-823-6004,Zucchini,Fruits & Vegetables,3 Lawn Park,52,79,87,Discontinued
+21-718-6746,Coconut,Fruits & Vegetables,277 Pawling Terrace,16,53,12,Discontinued
+86-692-2312,Avocado Oil,Oils & Fats,00616 Manitowish Parkway,30,48,52,Active
+54-109-8062,Sushi Rice,Grains & Pulses,67 Little Fleur Road,75,69,100,Backordered
+74-943-9034,White Bread,Bakery,0 Saint Paul Center,30,91,34,Active
+71-300-2191,Broccoli,Fruits & Vegetables,7 Heffernan Drive,79,72,6,Active
+65-145-9672,Long Grain Rice,Grains & Pulses,8 Dovetail Junction,71,10,49,Active
+93-966-7754,Pineapple,Fruits & Vegetables,4 4th Place,65,35,3,Active
+27-216-9671,Sesame Oil,Oils & Fats,4 Browning Terrace,100,86,94,Active
+44-538-3366,Tuna,Seafood,46 Cardinal Way,58,77,96,Discontinued
+34-075-0371,Watermelon,Fruits & Vegetables,0039 Shelley Place,75,10,68,Active
+24-972-6969,Cheese,Dairy,5862 Hooker Pass,69,53,32,Active
+92-455-2959,Robusta Coffee,Beverages,0 Ohio Hill,59,62,57,Backordered
+58-182-6781,Oatmeal Biscuit,Bakery,86 Maryland Junction,34,55,22,Active
+42-134-9798,Canola Oil,Oils & Fats,0087 Bluejay Plaza,19,80,87,Backordered
+18-278-2383,Gouda Cheese,Dairy,96 American Center,97,77,13,Backordered
+03-597-9488,Buttermilk,Dairy,53 Lawn Circle,70,66,74,Active
+14-681-7035,White Tea,Beverages,95261 Morningstar Way,36,90,57,Backordered
+01-439-6231,Sunflower Oil,Oils & Fats,8 Spaight Circle,88,100,17,Discontinued
+25-911-7736,Orange,Fruits & Vegetables,72090 Northfield Place,75,48,25,Backordered
+36-918-2937,Green Coffee,Beverages,90865 Sherman Court,62,89,18,Active
+37-666-3902,Cauliflower,Fruits & Vegetables,85276 Lakewood Gardens Alley,19,73,60,Backordered
+27-757-4489,Egg (Goose),Dairy,27535 Morrow Avenue,35,78,68,Discontinued
+97-040-3822,Swiss Cheese,Dairy,42 Clemons Terrace,50,99,73,Backordered
+98-445-7372,Cod,Seafood,8531 Manley Court,65,79,52,Discontinued
+92-152-5820,Black Tea,Beverages,0920 Monica Pass,18,36,53,Active
+24-986-5091,Vanilla Biscuit,Bakery,88 Lighthouse Bay Crossing,89,22,23,Discontinued
+22-849-2551,Mushrooms,Fruits & Vegetables,81533 John Wall Court,34,1,79,Discontinued
+15-169-8058,Bread Flour,Grains & Pulses,26160 Independence Alley,87,97,28,Active
+78-953-2073,Canola Oil,Oils & Fats,085 Reinke Pass,53,20,75,Backordered
+10-255-8579,Basmati Rice,Grains & Pulses,1959 Marcy Center,56,53,77,Active
+82-948-2298,Kiwi,Fruits & Vegetables,555 Butternut Hill,38,91,94,Discontinued
+60-747-8704,Papaya,Fruits & Vegetables,561 Pennsylvania Way,97,97,71,Active
+40-462-2952,Trout,Seafood,0258 Shoshone Center,91,68,80,Backordered
+98-235-2711,Asparagus,Fruits & Vegetables,5 Transport Pass,22,40,7,Active
+83-108-1174,White Bread,Bakery,3 Monument Street,78,68,68,Backordered
+28-505-8317,Watermelon,Fruits & Vegetables,848 Old Gate Parkway,23,85,94,Backordered
+31-803-5001,Asparagus,Fruits & Vegetables,64 1st Plaza,78,16,37,Backordered
+17-236-0566,Sweet Potato,Fruits & Vegetables,803 5th Alley,95,87,13,Backordered
+76-090-4411,Ricotta Cheese,Dairy,15 Loomis Avenue,49,94,18,Active
+43-910-2342,Plum,Fruits & Vegetables,46758 Hallows Center,26,69,90,Active
+05-425-0746,Onion,Fruits & Vegetables,49884 Brickson Park Plaza,50,68,90,Discontinued
+93-815-0565,Sesame Oil,Oils & Fats,8868 Armistice Place,50,36,96,Backordered
+67-270-7464,Jasmine Rice,Grains & Pulses,7242 Claremont Avenue,91,73,77,Discontinued
+61-827-4098,Cod,Seafood,29992 Warrior Center,23,42,87,Backordered
+92-291-7089,Cheese,Dairy,9307 Kingsford Road,76,15,99,Discontinued
+76-070-1411,Evaporated Milk,Dairy,87578 Stoughton Parkway,15,75,78,Discontinued
+36-330-5036,Salmon,Seafood,21 Golden Leaf Hill,79,28,4,Active
+02-034-6209,Sour Cream,Dairy,96 Brown Drive,22,43,3,Backordered
+49-891-4927,Cottage Cheese,Dairy,46 Hoffman Trail,37,5,1,Active
+94-020-6982,Tuna,Seafood,381 Rutledge Place,25,75,27,Active
+88-807-8431,Haddock,Seafood,2 Russell Alley,11,87,43,Active
+19-672-8982,Butter,Dairy,285 East Plaza,21,87,67,Discontinued
+07-389-5740,Egg (Quail),Dairy,59 Veith Center,34,94,69,Backordered
+39-629-5554,Egg (Goose),Dairy,267 International Plaza,44,90,17,Discontinued
+27-635-8394,Orange,Fruits & Vegetables,812 Shelley Circle,88,37,61,Discontinued
+14-844-4138,Black Coffee,Beverages,40643 Sullivan Lane,61,43,29,Discontinued
+65-464-5070,Heavy Cream,Dairy,00 Luster Alley,12,60,73,Discontinued
+46-911-1159,Onion,Fruits & Vegetables,9171 Norway Maple Trail,98,40,100,Active
+35-617-3857,Arabica Coffee,Beverages,292 Charing Cross Terrace,46,31,89,Backordered
+41-237-5498,Cheese,Dairy,29817 Coleman Drive,88,53,44,Discontinued
+86-672-4191,Egg (Goose),Dairy,18 Troy Avenue,88,22,61,Discontinued
+10-555-5971,Sourdough Bread,Bakery,8425 New Castle Parkway,94,56,80,Backordered
+45-050-4720,Black Rice,Grains & Pulses,7 Ridge Oak Pass,18,78,43,Active
+73-997-6251,Bell Pepper,Fruits & Vegetables,1666 Dayton Terrace,94,18,84,Discontinued
+53-446-8243,Orange,Fruits & Vegetables,757 Grasskamp Drive,41,94,4,Discontinued
+12-798-9401,Cream,Dairy,5 Forster Point,18,14,77,Backordered
+93-014-4256,Green Beans,Fruits & Vegetables,6 Bay Road,19,92,41,Active
+60-911-3745,Black Rice,Grains & Pulses,75054 Ramsey Parkway,98,41,98,Backordered
+53-146-9979,Powdered Sugar,Grains & Pulses,42 Mandrake Alley,21,15,27,Active
+65-780-5622,Butter Biscuit,Bakery,65 Forster Way,74,81,41,Active
+29-896-7926,White Rice,Grains & Pulses,80930 Briar Crest Point,20,20,56,Backordered
+67-027-7269,Mushrooms,Fruits & Vegetables,615 Mayer Drive,35,19,30,Backordered
+25-353-2067,Papaya,Fruits & Vegetables,59449 Sherman Parkway,81,16,69,Backordered
+72-341-1154,Heavy Cream,Dairy,8682 Golf Course Junction,85,66,85,Discontinued
+16-187-5729,Black Tea,Beverages,22555 Macpherson Plaza,45,58,84,Active
+49-311-3063,Kiwi,Fruits & Vegetables,71 Bultman Drive,47,75,53,Discontinued
+98-652-9569,Butter Biscuit,Bakery,32 6th Lane,12,7,23,Discontinued
+78-689-8958,White Tea,Beverages,04 Mesta Parkway,20,43,43,Active
+66-378-7532,Blueberries,Fruits & Vegetables,88678 Bayside Park,87,51,67,Backordered
+14-115-8371,Chocolate Biscuit,Bakery,40 Cody Pass,23,76,70,Backordered
+76-540-6407,Orange,Fruits & Vegetables,77 Prairie Rose Park,92,54,73,Backordered
+81-573-0943,Egg (Chicken),Dairy,20 Marcy Circle,22,58,2,Active
+68-732-5919,Jasmine Rice,Grains & Pulses,56 Bonner Point,26,83,24,Backordered
+68-734-1585,Greek Yogurt,Fruits & Vegetables,3 Hagan Drive,62,44,11,Discontinued
+93-342-8794,Bread Flour,Grains & Pulses,39102 Division Trail,84,91,86,Backordered
+42-175-1648,Pomegranate,Fruits & Vegetables,72778 Loftsgordon Center,81,87,15,Backordered
+46-083-7058,Haddock,Seafood,21530 Prentice Place,61,91,40,Active
+66-716-8221,Cheddar Cheese,Dairy,54 Weeping Birch Lane,70,96,35,Backordered
+12-714-5135,Ricotta Cheese,Dairy,2003 Delladonna Pass,49,28,74,Discontinued
+35-031-1497,Green Coffee,Beverages,581 Oneill Crossing,20,68,20,Active
+54-708-7327,Jasmine Rice,Grains & Pulses,8182 Hazelcrest Place,50,14,99,Active
+63-897-8088,Zucchini,Fruits & Vegetables,7944 Elgar Alley,63,56,33,Backordered
+79-494-2472,Green Beans,Fruits & Vegetables,1615 Bellgrove Crossing,42,48,18,Active
+15-679-3935,Grapes,Fruits & Vegetables,95 Garrison Plaza,22,69,87,Backordered
+31-608-1445,Papaya,Fruits & Vegetables,227 Tennyson Plaza,84,28,29,Discontinued
+70-206-4860,Egg (Quail),Dairy,75 High Crossing Junction,93,68,71,Discontinued
+30-832-5429,Multigrain Bread,Bakery,894 Kingsford Road,46,43,46,Backordered
+01-173-0029,Blueberries,Fruits & Vegetables,8 Dakota Avenue,42,4,53,Active
+65-235-7676,Whole Wheat Bread,Bakery,31208 Westerfield Way,91,71,17,Active
+79-400-6216,Mozzarella Cheese,Dairy,4 Warbler Center,16,56,13,Discontinued
+35-836-6718,Ricotta Cheese,Dairy,05 Canary Circle,91,14,99,Backordered
+08-573-9997,Pomegranate,Fruits & Vegetables,03 Little Fleur Pass,26,1,9,Backordered
+66-854-5736,Kiwi,Fruits & Vegetables,50880 Nobel Road,63,57,11,Discontinued
+85-835-3445,Egg (Goose),Dairy,288 Fair Oaks Place,50,93,37,Backordered
+10-768-2443,Multigrain Bread,Bakery,4 Orin Lane,93,55,95,Backordered
+19-112-1616,Lettuce,Fruits & Vegetables,7698 Logan Drive,88,56,72,Active
+89-388-3239,Grapes,Fruits & Vegetables,4346 Columbus Way,54,88,43,Backordered
+22-760-4605,Yogurt,Dairy,09264 Forest Dale Drive,86,20,67,Discontinued
+38-664-2155,Cauliflower,Fruits & Vegetables,843 Pepper Wood Hill,48,27,73,Discontinued
+89-713-6071,Sesame Oil,Oils & Fats,60 Dottie Hill,89,66,28,Active
+56-191-6497,Bread Flour,Grains & Pulses,844 Schurz Point,97,41,68,Discontinued
+27-389-3529,Haddock,Seafood,234 Eagle Crest Avenue,84,8,54,Active
+11-604-6002,Canola Oil,Oils & Fats,17640 Cottonwood Place,69,17,27,Backordered
+20-448-2972,Asparagus,Fruits & Vegetables,49770 Hoffman Court,80,6,92,Discontinued
+77-959-1018,Lettuce,Fruits & Vegetables,03 Ryan Circle,22,22,65,Backordered
+69-895-3397,Cucumber,Fruits & Vegetables,98 Melody Street,28,5,9,Discontinued
+32-933-0329,Blueberries,Fruits & Vegetables,57150 Del Sol Alley,23,38,54,Active
+33-440-2588,Bell Pepper,Fruits & Vegetables,4 6th Plaza,26,12,43,Backordered
+02-085-7218,Cheddar Cheese,Dairy,2835 Schlimgen Parkway,85,28,32,Backordered
+43-193-9915,Mozzarella Cheese,Dairy,61 Transport Parkway,55,58,6,Discontinued
+62-998-7250,Evaporated Milk,Dairy,9171 Redwing Street,72,3,10,Backordered
+70-871-4536,Swiss Cheese,Dairy,5 Waxwing Junction,29,4,17,Active
+38-822-8005,Cucumber,Fruits & Vegetables,6 Stang Hill,47,20,65,Backordered
+38-390-2115,Potato,Fruits & Vegetables,3 Del Mar Point,42,69,54,Active
+28-968-4195,Eggplant,Fruits & Vegetables,5 Loftsgordon Trail,97,52,80,Backordered
+09-286-8107,Greek Yogurt,Dairy,75 Bunting Junction,90,62,54,Discontinued
+00-405-7428,Apple,Fruits & Vegetables,42 Mallory Court,81,74,45,Discontinued
+43-893-5408,Short Grain Rice,Grains & Pulses,6 Orin Place,60,90,85,Discontinued
+52-481-5224,Kiwi,Fruits & Vegetables,80 Old Shore Plaza,45,24,61,Backordered
+34-131-8805,Yogurt,Dairy,44249 Sutteridge Crossing,92,92,28,Discontinued
+36-840-2728,Mackerel,Seafood,08545 Lillian Street,76,21,3,Discontinued
+64-418-8356,Sunflower Oil,Oils & Fats,1 Green Hill,80,24,60,Active
+51-462-0747,Lime,Fruits & Vegetables,453 Dryden Park,21,30,32,Backordered
+74-711-7160,Sushi Rice,Grains & Pulses,44296 Kropf Avenue,84,69,77,Backordered
+44-637-5512,Watermelon,Fruits & Vegetables,00064 Mosinee Circle,58,12,99,Active
+27-881-1177,Green Tea,Beverages,1223 Monument Drive,34,47,99,Backordered
+72-404-5581,Almond Flour,Grains & Pulses,879 Amoth Terrace,54,17,90,Active
+12-046-2988,Corn Oil,Oils & Fats,931 Browning Center,17,63,66,Backordered
+21-816-1004,Black Coffee,Beverages,564 Hazelcrest Crossing,84,13,88,Backordered
+81-605-6246,Sardines,Seafood,65721 Caliangt Crossing,73,31,49,Discontinued
+11-815-7923,Parmesan Cheese,Dairy,89 Springs Alley,96,9,57,Active
+26-456-1992,Tilapia,Seafood,1792 Crownhardt Street,56,59,87,Active
+63-168-6018,Cucumber,Fruits & Vegetables,0847 Artisan Hill,60,63,81,Active
+70-854-6891,Sourdough Bread,Bakery,24045 Bluestem Point,41,84,90,Active
+87-762-1317,Mozzarella Cheese,Dairy,9305 Warrior Way,45,63,75,Discontinued
+80-374-5711,Herbal Tea,Beverages,13 Bluejay Way,48,77,81,Backordered
+60-456-8169,Cheddar Cheese,Dairy,710 Service Park,21,28,72,Backordered
+99-543-5039,Lemon,Fruits & Vegetables,71796 Waubesa Terrace,65,88,20,Backordered
+72-810-9753,Sesame Oil,Oils & Fats,545 Farwell Lane,14,84,15,Active
+78-956-4737,Sushi Rice,Grains & Pulses,9 Burrows Junction,47,1,60,Discontinued
+46-415-8633,Apple,Fruits & Vegetables,5 Eggendart Parkway,71,36,45,Backordered
+06-611-5454,Peanut Oil,Oils & Fats,16 Autumn Leaf Way,64,21,13,Backordered
+27-783-5470,Feta Cheese,Dairy,6 Tony Junction,74,65,5,Discontinued
+55-697-5242,Ricotta Cheese,Dairy,19112 Little Fleur Road,51,53,88,Discontinued
+15-082-9124,Apricot,Fruits & Vegetables,38 Dawn Street,89,35,19,Discontinued
+06-996-3221,Evaporated Milk,Dairy,579 Schlimgen Alley,11,9,65,Discontinued
+45-634-0679,Haddock,Seafood,9 Anhalt Trail,98,100,34,Active
+15-796-3130,Rye Bread,Bakery,85 Lunder Court,50,58,78,Active
+51-000-8113,Green Tea,Beverages,51369 Dawn Hill,24,27,35,Active
+20-387-7746,Powdered Sugar,Grains & Pulses,9050 Dorton Pass,64,10,100,Active
+82-931-7126,Asparagus,Fruits & Vegetables,856 School Plaza,34,95,18,Discontinued
+55-631-7937,Greek Yogurt,Dairy,82 Drewry Junction,26,54,90,Active
+11-338-4598,Potato,Fruits & Vegetables,9067 Valley Edge Park,72,58,69,Backordered
+52-402-9245,Broccoli,Fruits & Vegetables,185 Stone Corner Parkway,89,40,64,Active
+09-536-2626,Olive Oil,Oils & Fats,205 Straubel Court,83,52,32,Active
+48-427-0551,Arabica Coffee,Beverages,2 7th Center,13,55,77,Backordered
+06-706-6490,Green Tea,Beverages,443 Browning Terrace,15,66,85,Backordered
+29-135-0791,Jasmine Rice,Grains & Pulses,97 Utah Lane,56,48,82,Backordered
+89-624-7462,Asparagus,Fruits & Vegetables,25 Drewry Alley,18,3,39,Backordered
+82-231-4245,Wild Rice,Grains & Pulses,77 Monument Court,32,91,80,Discontinued
+42-220-9305,White Sugar,Grains & Pulses,61932 Cascade Crossing,91,98,6,Backordered
+02-920-4829,White Bread,Bakery,4 Judy Hill,92,87,84,Backordered
+61-801-8665,Robusta Coffee,Beverages,58 La Follette Park,42,88,17,Discontinued
+01-144-5960,Trout,Seafood,52105 Mandrake Place,75,25,99,Active
+98-575-4736,Cucumber,Fruits & Vegetables,83 Pleasure Street,76,11,15,Active
+30-996-2526,Green Beans,Fruits & Vegetables,77 Monterey Avenue,86,90,39,Active
+45-380-4627,Cabbage,Fruits & Vegetables,0 Thackeray Point,90,1,40,Discontinued
+47-548-6500,Onion,Fruits & Vegetables,06 Shopko Pass,20,93,37,Discontinued
+30-591-7275,Brown Rice,Grains & Pulses,7020 Porter Trail,17,88,41,Backordered
+38-296-6634,Peas,Fruits & Vegetables,160 Kings Street,49,46,8,Discontinued
+98-858-6323,Swiss Cheese,Dairy,80729 Homewood Plaza,20,17,71,Active
+69-743-0161,Bread Flour,Grains & Pulses,583 Loftsgordon Road,99,54,71,Discontinued
+71-067-3278,Anchovies,Seafood,5521 Wayridge Center,51,35,95,Backordered
+24-143-4957,Canola Oil,Oils & Fats,685 Independence Junction,25,97,63,Discontinued
+31-387-5020,Parmesan Cheese,Dairy,854 Kipling Point,63,41,98,Active
+33-378-1365,Egg (Goose),Dairy,23560 Talmadge Center,50,66,1,Active
+41-729-5410,Sardines,Seafood,7193 Crownhardt Drive,91,59,49,Active
+33-335-9140,Olive Oil,Oils & Fats,76928 Tennyson Parkway,28,17,28,Active
+40-021-2400,Zucchini,Fruits & Vegetables,265 Columbus Way,29,18,86,Active
+81-268-5905,Mackerel,Seafood,85953 Clyde Gallagher Drive,89,26,36,Active
+38-617-7226,Mushrooms,Fruits & Vegetables,33145 Butterfield Avenue,65,42,62,Active
+54-822-9009,Cauliflower,Grains & Pulses,64389 Arkansas Alley,40,38,32,Backordered
+02-655-3240,Rice Flour,Grains & Pulses,6738 Tennyson Road,99,44,52,Discontinued
+01-839-6534,Short Grain Rice,Grains & Pulses,8 Hazelcrest Street,56,28,76,Active
+98-499-2220,Parmesan Cheese,Dairy,27 School Court,37,3,45,Discontinued
+69-171-1305,Brown Rice,Grains & Pulses,9951 Petterle Alley,31,29,57,Active
+57-394-4703,White Tea,Beverages,38 Banding Lane,81,83,36,Backordered
+58-946-5152,Bread Flour,Grains & Pulses,06 Lake View Trail,11,77,7,Backordered
+74-587-2065,Pear,Fruits & Vegetables,84642 Clarendon Point,29,20,85,Active
+69-287-9113,Zucchini,Fruits & Vegetables,11 Golden Leaf Alley,59,91,24,Active
+03-441-4252,Yogurt,Dairy,6 Bobwhite Alley,12,83,93,Backordered
+29-344-3658,Lime,Fruits & Vegetables,7 Talmadge Street,75,56,57,Discontinued
+12-342-4482,Trout,Seafood,374 Blue Bill Park Point,67,83,90,Active
+99-894-4351,White Sugar,Grains & Pulses,185 Saint Paul Road,29,54,54,Backordered
+34-709-9237,Carrot,Fruits & Vegetables,1509 Hoard Circle,61,81,99,Discontinued
+05-498-7751,Cauliflower,Fruits & Vegetables,30408 5th Way,52,22,37,Active
+32-270-1385,Greek Yogurt,Fruits & Vegetables,0500 Calypso Pass,28,38,23,Backordered
+67-710-5120,Bread Flour,Grains & Pulses,978 Shasta Lane,84,92,18,Active
+37-709-3532,Mushrooms,Fruits & Vegetables,524 Saint Paul Park,79,45,39,Backordered
+60-311-5701,Sesame Oil,Oils & Fats,9 Meadow Vale Drive,39,78,97,Backordered
+97-093-4278,Buttermilk,Dairy,467 Dexter Pass,69,98,89,Discontinued
+41-131-3841,Almond Flour,Grains & Pulses,16 Fair Oaks Pass,77,19,31,Backordered
+40-630-1431,Cherry,Fruits & Vegetables,8119 Homewood Drive,29,66,21,Discontinued
+64-493-5270,Palm Oil,Oils & Fats,4571 Fremont Way,69,59,29,Active
+07-219-8017,Palm Oil,Oils & Fats,357 High Crossing Parkway,40,2,58,Active
+73-751-4393,Onion,Fruits & Vegetables,03 Roth Court,68,10,29,Discontinued
+50-942-2409,Peas,Fruits & Vegetables,7182 Summit Court,75,91,68,Backordered
+01-018-6418,Chocolate Biscuit,Bakery,481 Mifflin Hill,68,29,100,Backordered
+59-725-4038,Arabica Coffee,Beverages,697 Hoepker Center,78,34,39,Active
+40-997-2786,Yogurt,Dairy,5551 Mallory Lane,76,98,41,Backordered
+11-766-8738,Watermelon,Fruits & Vegetables,20 Nelson Way,27,64,43,Discontinued
+40-860-4532,Arabica Coffee,Beverages,988 Southridge Way,74,72,18,Active
+55-936-2406,Bread Flour,Grains & Pulses,52691 8th Drive,27,93,88,Active
+62-816-8794,Rice Flour,Grains & Pulses,04 Blaine Lane,15,76,81,Backordered
+04-104-6993,Buttermilk,Dairy,55095 Northview Drive,60,1,42,Active
+35-835-5591,Tilapia,Seafood,509 Carpenter Trail,95,63,73,Backordered
+83-704-6367,Arabica Coffee,Beverages,298 Corry Plaza,21,87,12,Discontinued
+60-771-0879,Blueberries,Fruits & Vegetables,9 Karstens Center,89,15,22,Discontinued
+27-269-5260,Pineapple,Fruits & Vegetables,1661 Springview Terrace,14,81,65,Active
+20-031-0532,Mango,Fruits & Vegetables,8239 Laurel Way,32,63,92,Discontinued
+19-323-0506,Halibut,Seafood,5 Ohio Lane,68,43,96,Backordered
+46-452-9419,Egg (Duck),Dairy,55782 Welch Hill,43,10,15,Active
+90-492-0564,Pomegranate,Fruits & Vegetables,54 Pawling Crossing,92,96,56,Discontinued
+17-395-1121,Plum,Fruits & Vegetables,8 Oriole Terrace,85,16,74,Backordered
+83-400-9746,Mozzarella Cheese,Dairy,40 Merchant Terrace,24,1,65,Active
+19-854-3663,Watermelon,Fruits & Vegetables,4 Dakota Avenue,13,88,11,Backordered
+57-167-0669,Haddock,Seafood,1005 Lyons Junction,19,99,78,Discontinued
+76-954-1442,Arabica Coffee,Beverages,43024 Elka Avenue,97,77,99,Backordered
+83-763-5038,Buttermilk,Dairy,5 Armistice Parkway,52,64,54,Backordered
+80-375-9075,Swiss Cheese,Dairy,3831 Goodland Road,96,34,57,Discontinued
+87-391-9658,Corn Oil,Oils & Fats,92486 Laurel Alley,26,100,13,Discontinued
+67-725-6830,Brown Rice,Grains & Pulses,9 Victoria Point,51,47,6,Backordered
+12-093-9863,Arborio Rice,Grains & Pulses,6748 Mitchell Road,51,19,96,Active
+44-408-7594,Eggplant,Fruits & Vegetables,81 Oneill Circle,39,21,5,Backordered
+04-637-8815,Apricot,Fruits & Vegetables,537 Maple Alley,90,91,62,Active
+88-746-9468,Onion,Fruits & Vegetables,82737 Ryan Place,35,92,74,Active
+32-987-5559,Green Tea,Beverages,7 Hallows Alley,39,88,100,Backordered
+02-484-0206,Short Grain Rice,Grains & Pulses,60 Main Pass,64,97,91,Active
+80-441-7249,Wild Rice,Grains & Pulses,652 High Crossing Lane,98,30,39,Active
+41-316-8427,Arborio Rice,Grains & Pulses,03416 Valley Edge Circle,95,93,16,Active
+56-668-5370,Vegetable Oil,Oils & Fats,05686 Golden Leaf Point,70,96,21,Discontinued
+45-172-7012,Papaya,Fruits & Vegetables,11 Kedzie Avenue,20,91,12,Active
+93-015-0811,Pineapple,Fruits & Vegetables,1 Pleasure Hill,18,7,58,Discontinued
+52-029-2382,Coconut Oil,Oils & Fats,08896 Evergreen Avenue,54,86,69,Discontinued
+28-044-4102,Papaya,Fruits & Vegetables,309 Burning Wood Center,19,28,83,Discontinued
+34-861-4446,Ricotta Cheese,Dairy,113 Donald Court,66,40,8,Active
+80-334-0215,Grapes,Fruits & Vegetables,611 Waubesa Circle,88,27,92,Discontinued
+94-697-2396,Sourdough Bread,Bakery,44 Thompson Terrace,71,97,44,Discontinued
+76-027-4850,Onion,Fruits & Vegetables,425 Shasta Terrace,39,37,48,Active
+15-907-3681,Plum,Fruits & Vegetables,21633 Sycamore Center,20,42,21,Discontinued
+00-641-8691,Black Coffee,Beverages,797 Mcbride Lane,33,22,94,Discontinued
+15-762-1058,Lime,Fruits & Vegetables,083 Mccormick Park,29,83,91,Backordered
+57-779-4955,Black Rice,Grains & Pulses,38436 Anthes Way,92,48,22,Backordered
+68-436-1268,Egg (Duck),Dairy,1 Mockingbird Parkway,70,92,74,Backordered
+26-000-1012,Parmesan Cheese,Dairy,3 Bayside Point,65,54,29,Backordered
+75-094-1179,Rye Bread,Bakery,13 Forest Run Place,26,79,31,Discontinued
+11-032-9778,Peas,Fruits & Vegetables,553 Mayfield Crossing,99,1,4,Backordered
+24-478-8277,Multigrain Bread,Bakery,55276 Golf Hill,47,26,40,Active
+12-239-9399,Potato,Fruits & Vegetables,924 La Follette Alley,28,40,27,Active
+83-321-7887,Egg (Duck),Dairy,35598 Fuller Terrace,44,75,72,Discontinued
+80-371-3695,Cottage Cheese,Dairy,163 Esch Pass,89,42,76,Backordered
+49-199-6836,Tomato,Fruits & Vegetables,77 Brown Circle,100,64,62,Discontinued
+85-510-2915,White Bread,Bakery,8 Merrick Lane,62,49,38,Discontinued
+08-637-9335,Lettuce,Fruits & Vegetables,9 Cardinal Alley,100,7,14,Backordered
+85-212-2729,Egg (Turkey),Dairy,93 Longview Junction,42,94,79,Backordered
+51-469-4611,Long Grain Rice,Grains & Pulses,04776 Saint Paul Park,62,81,91,Discontinued
+34-928-2775,Coconut,Fruits & Vegetables,7945 Mayer Center,19,47,25,Discontinued
+32-676-1026,Salmon,Seafood,9433 Jenna Lane,52,46,12,Backordered
+53-080-8252,Sourdough Bread,Bakery,2 Grayhawk Junction,30,85,21,Discontinued
+49-526-7806,Kale,Fruits & Vegetables,6744 Helena Pass,77,52,28,Active
+31-157-1822,Ricotta Cheese,Dairy,803 Cottonwood Crossing,96,80,20,Discontinued
+91-426-3204,Haddock,Seafood,269 Dakota Trail,67,71,4,Backordered
+64-109-7362,Anchovies,Seafood,7 Harper Drive,86,55,96,Backordered
+68-418-6724,Parmesan Cheese,Dairy,49869 Bunker Hill Terrace,63,4,85,Active
+93-813-2419,Digestive Biscuit,Bakery,7407 Farragut Pass,39,16,57,Active
+52-123-8039,Pomegranate,Fruits & Vegetables,7 Schiller Court,43,65,66,Backordered
+74-666-5671,Tuna,Seafood,11263 Kipling Hill,37,33,80,Backordered
+26-161-6692,Zucchini,Fruits & Vegetables,70001 Vahlen Lane,61,90,26,Discontinued
+44-368-7112,Corn Oil,Oils & Fats,82 Hintze Court,28,32,71,Discontinued
+01-820-5784,Egg (Duck),Dairy,6982 Crownhardt Circle,63,38,77,Active
+10-378-9729,Cabbage,General,2 Butterfield Pass,69,21,68,Discontinued
+39-479-5147,Tuna,Seafood,14 Talmadge Park,92,68,79,Discontinued
+95-262-6208,Black Tea,Beverages,44662 American Plaza,19,78,90,Discontinued
+37-248-6266,Pear,Fruits & Vegetables,7051 Calypso Place,84,74,48,Backordered
+43-851-9440,Lime,Fruits & Vegetables,4033 Sloan Hill,14,75,19,Backordered
+11-053-0107,Cherry,Fruits & Vegetables,734 Thackeray Avenue,30,25,11,Active
+28-608-0039,Lemon,Fruits & Vegetables,31057 Roth Place,63,60,54,Backordered
+96-334-2593,White Tea,Beverages,9559 Muir Trail,60,27,58,Active
+73-010-8323,Tuna,Seafood,811 Dapin Center,16,34,89,Backordered
+86-273-9377,White Rice,Grains & Pulses,1 Hollow Ridge Park,18,86,20,Discontinued
+35-353-4068,Bread Flour,Grains & Pulses,8583 Northwestern Terrace,64,11,97,Discontinued
+02-974-8526,Onion,Fruits & Vegetables,42 Green Ridge Terrace,74,4,39,Backordered
+95-252-9619,Carrot,Fruits & Vegetables,57453 Northwestern Alley,92,39,50,Backordered
+43-469-7551,Arabica Coffee,Beverages,760 Butternut Plaza,45,36,97,Active
+08-495-6853,Heavy Cream,Dairy,7943 Amoth Parkway,74,62,6,Active
+83-556-0996,Powdered Sugar,Grains & Pulses,53 Forest Run Plaza,88,34,94,Active
+65-282-0419,White Tea,Beverages,509 Waywood Center,50,100,91,Active
+95-449-1286,Egg (Chicken),Dairy,1 Jackson Pass,10,17,70,Backordered
+00-534-9775,Black Coffee,Beverages,68 Dakota Center,87,91,23,Backordered
+09-618-2842,White Sugar,Grains & Pulses,642 Arizona Point,38,82,17,Discontinued
+74-610-2295,Green Coffee,Beverages,87 Bluestem Parkway,61,31,100,Active
+17-265-1899,Orange,Fruits & Vegetables,4826 Drewry Center,81,35,82,Backordered
+06-336-5482,Sardines,Seafood,7 Mockingbird Hill,89,34,15,Discontinued
+20-283-0111,Pear,Fruits & Vegetables,0 Ruskin Way,58,55,5,Active
+77-937-1108,White Sugar,Grains & Pulses,01 Hansons Crossing,39,83,21,Active
+07-337-9889,Cauliflower,Fruits & Vegetables,4 Loomis Way,95,6,59,Active
+81-578-7404,Gouda Cheese,Dairy,5989 Longview Drive,67,79,98,Active
+90-303-1821,Onion,Fruits & Vegetables,6435 Burning Wood Drive,50,20,74,Backordered
+42-495-7698,Sushi Rice,Grains & Pulses,91 Gateway Pass,10,11,29,Backordered
+57-101-0060,Whole Wheat Flour,Grains & Pulses,78919 East Crossing,59,73,86,Backordered
+99-561-4871,Haddock,Seafood,952 Rowland Junction,17,38,93,Active
+40-126-0515,Carrot,Fruits & Vegetables,28351 Cascade Plaza,74,37,57,Active
+19-377-5021,Mackerel,Seafood,884 Sloan Drive,91,96,90,Backordered
+60-644-6596,Trout,Seafood,22 Hudson Pass,89,67,89,Discontinued
+82-711-0772,Egg (Goose),Dairy,463 Oxford Crossing,72,58,52,Active
+55-803-3964,Bread Flour,Grains & Pulses,149 Valley Edge Point,25,60,36,Backordered
+00-119-8780,Halibut,Seafood,21 Sunbrook Court,40,81,78,Backordered
+13-888-0149,Lime,Fruits & Vegetables,1 Logan Road,75,18,65,Active
+51-273-4240,Multigrain Bread,Bakery,7 Prairieview Place,85,57,25,Discontinued
+23-395-3157,Vegetable Oil,Oils & Fats,74 Sugar Plaza,41,66,50,Backordered
+03-149-9760,Whipped Cream,Dairy,554 Eliot Point,92,99,93,Discontinued
+02-895-7781,Coconut Sugar,Grains & Pulses,2582 Autumn Leaf Park,51,55,76,Discontinued
+95-354-8583,Long Grain Rice,Grains & Pulses,848 Mariners Cove Junction,98,40,93,Active
+27-681-5588,Anchovies,Seafood,498 Delladonna Drive,100,99,8,Discontinued
+70-534-7796,Zucchini,Fruits & Vegetables,76106 Anthes Junction,43,21,31,Backordered
+72-066-4597,Broccoli,Fruits & Vegetables,03 Fisk Alley,31,54,52,Active
+79-884-8810,Cucumber,Fruits & Vegetables,546 Declaration Place,12,93,29,Backordered
+08-703-1382,Peach,Fruits & Vegetables,082 Clove Plaza,40,53,7,Backordered
+39-315-3936,Heavy Cream,Dairy,850 Glacier Hill Drive,57,62,72,Backordered
+06-690-2335,Jasmine Rice,Grains & Pulses,5 Linden Terrace,24,15,6,Discontinued
+43-153-8268,Vegetable Oil,Oils & Fats,29815 Bonner Trail,75,61,19,Backordered
+44-634-8292,Whole Wheat Flour,Grains & Pulses,46 Orin Drive,60,69,64,Active
+96-774-0457,Cod,Seafood,7369 Thackeray Drive,56,50,80,Discontinued
+50-930-4751,Salmon,Seafood,80380 Valley Edge Road,88,40,29,Discontinued
+63-918-8253,Mango,Fruits & Vegetables,917 Westerfield Terrace,53,98,23,Backordered
+84-629-1532,Arabica Coffee,Beverages,7 Sloan Park,22,89,25,Discontinued
+77-312-6317,Spinach,Fruits & Vegetables,3616 Carey Pass,41,29,76,Discontinued
+21-693-8216,Corn Oil,Oils & Fats,32468 Utah Pass,70,96,85,Active
+74-430-8245,Peach,Fruits & Vegetables,7 Roxbury Circle,73,90,77,Backordered
+39-449-0772,Feta Cheese,Dairy,195 Portage Junction,94,13,15,Backordered
+51-312-8608,Cheddar Cheese,Dairy,406 Westridge Alley,68,60,21,Active
+89-543-3456,Blueberries,Fruits & Vegetables,22782 Oriole Way,66,40,96,Active
+57-861-4379,Swiss Cheese,Dairy,64407 Marcy Plaza,93,8,51,Backordered
+39-768-8205,Egg (Turkey),Dairy,32 Rigney Terrace,56,97,29,Backordered
+95-130-9020,Heavy Cream,Dairy,2 Canary Street,82,12,94,Active
+02-575-1980,Plum,Fruits & Vegetables,34832 Autumn Leaf Terrace,11,58,32,Active
+22-895-6595,Rice Flour,Grains & Pulses,34642 Carpenter Place,31,32,69,Active
+85-207-4164,Eggplant,Fruits & Vegetables,41 Comanche Park,97,20,72,Backordered
+26-799-3714,Robusta Coffee,Beverages,49225 Homewood Place,74,2,45,Active
+57-903-6434,Tomato,Fruits & Vegetables,34 Linden Court,44,67,15,Active
+80-227-6886,Garlic,Fruits & Vegetables,4374 Corry Terrace,33,4,31,Active
+31-255-9616,Tuna,Seafood,9440 Coleman Drive,88,71,9,Backordered
+37-610-1999,Halibut,Seafood,3 John Wall Point,14,67,65,Discontinued
+86-330-0214,Arabica Coffee,Beverages,5818 Twin Pines Place,36,64,63,Backordered
+29-592-7315,Arborio Rice,Grains & Pulses,21625 Schlimgen Park,56,4,74,Active
+86-257-4613,Jasmine Rice,Grains & Pulses,5 Prentice Pass,44,26,60,Discontinued
+79-350-5841,Jasmine Rice,Grains & Pulses,75 Cascade Avenue,33,44,89,Discontinued
+22-329-7791,Watermelon,Fruits & Vegetables,50687 Porter Park,53,41,30,Discontinued
+10-854-5467,Canola Oil,Oils & Fats,3 Oakridge Parkway,96,51,40,Discontinued
+70-612-2531,Pineapple,Fruits & Vegetables,4 Raven Drive,48,48,39,Discontinued
+71-516-1996,Corn Oil,Oils & Fats,12 Truax Court,96,52,16,Active
+71-999-2404,Mango,Fruits & Vegetables,18 Warrior Circle,58,58,28,Active
+29-875-6900,Papaya,Fruits & Vegetables,2 Sachtjen Park,45,28,6,Discontinued
+11-922-3342,Black Coffee,Beverages,094 Carberry Lane,24,77,32,Discontinued
+74-562-7431,Vanilla Biscuit,Bakery,79 Ronald Regan Avenue,94,34,21,Backordered
+95-357-2870,Arborio Rice,Grains & Pulses,87 Corben Street,86,80,80,Discontinued
+04-277-5245,Coconut Sugar,Grains & Pulses,911 Ridgeway Way,20,51,21,Backordered
+91-105-7317,Orange,Fruits & Vegetables,44022 Barnett Way,85,45,71,Discontinued
+37-246-0018,Broccoli,Fruits & Vegetables,52 Alpine Crossing,30,59,76,Discontinued
+27-474-0056,Spinach,Fruits & Vegetables,538 Bayside Parkway,23,6,40,Backordered
+12-439-8428,Eggplant,Fruits & Vegetables,6 Rusk Pass,17,3,33,Backordered
+56-657-4387,White Bread,Bakery,5 Lyons Street,61,77,45,Backordered
+91-290-9062,Digestive Biscuit,Bakery,9821 Novick Hill,29,2,84,Backordered
+06-503-5891,Egg (Goose),Dairy,49646 Derek Lane,40,22,74,Backordered
+37-064-7275,Robusta Coffee,Beverages,149 Lawn Way,20,42,45,Discontinued
+21-993-5632,Watermelon,Fruits & Vegetables,16730 Luster Alley,51,72,85,Active
+05-720-8792,Carrot,Fruits & Vegetables,2 Northview Avenue,80,91,36,Active
+36-531-4087,Almond Flour,Grains & Pulses,2 Columbus Drive,85,12,94,Discontinued
+61-680-9496,Apple,Fruits & Vegetables,2 Northridge Street,17,14,17,Discontinued
+36-636-4873,Black Rice,Grains & Pulses,451 Grim Hill,86,100,74,Active
+45-992-5653,Whole Wheat Flour,Grains & Pulses,5 Fisk Point,82,67,67,Backordered
+85-781-5386,Salmon,Seafood,10577 Thierer Plaza,78,68,86,Discontinued
+76-459-2392,Palm Oil,Oils & Fats,2005 Mccormick Road,74,4,67,Backordered
+92-791-0606,Short Grain Rice,Grains & Pulses,739 Grayhawk Trail,18,62,2,Discontinued
+87-199-2743,Papaya,Fruits & Vegetables,38695 Kenwood Circle,59,74,100,Active
+04-038-1547,Rye Bread,Bakery,76 Shelley Pass,48,2,16,Discontinued
+83-917-7384,Garlic,Fruits & Vegetables,3 Ilene Terrace,76,97,20,Discontinued
+94-525-6925,Rye Bread,Bakery,667 Arkansas Circle,50,56,63,Discontinued
+16-632-1308,Arabica Coffee,Beverages,60094 Goodland Junction,23,13,15,Backordered
+13-798-3397,Egg (Turkey),Dairy,93321 Kennedy Point,86,16,37,Active
+69-834-2874,Oatmeal Biscuit,Bakery,39 Oxford Drive,28,62,81,Discontinued
+60-343-3288,Tilapia,Seafood,6 Hanover Terrace,85,92,66,Backordered
+21-650-9319,White Bread,Bakery,4 Hagan Court,42,88,95,Backordered
+14-550-2152,Green Tea,Beverages,3 Forster Point,51,1,61,Active
+61-582-7399,Apricot,Fruits & Vegetables,8 Hanover Center,73,83,74,Discontinued
+28-107-4953,Chocolate Biscuit,Bakery,29755 Daystar Street,53,19,94,Discontinued
+53-050-8242,Mackerel,Seafood,9 Cordelia Trail,82,25,94,Backordered
+88-586-8797,Grapes,Fruits & Vegetables,9469 Bayside Plaza,98,62,97,Active
+93-772-3085,Banana,Fruits & Vegetables,07359 Porter Park,39,19,18,Active
+04-001-1793,Green Coffee,Beverages,0 Stoughton Terrace,43,38,63,Backordered
+10-137-9759,Watermelon,Fruits & Vegetables,402 Kings Road,90,17,17,Backordered
+96-682-8546,Egg (Chicken),Dairy,97 Walton Avenue,70,29,24,Backordered
+07-617-6934,Coconut Sugar,Grains & Pulses,9262 Sullivan Crossing,91,39,48,Active
+43-164-5984,Butter,Dairy,70862 Lighthouse Bay Junction,36,75,35,Discontinued
+07-074-1196,Plum,Fruits & Vegetables,27 New Castle Avenue,11,56,62,Backordered
+05-193-8096,Grapes,Fruits & Vegetables,38 Rutledge Plaza,82,21,85,Backordered
+92-837-8839,Vegetable Oil,Oils & Fats,95 Lerdahl Park,23,71,32,Discontinued
+60-343-7973,Multigrain Bread,Bakery,85408 Toban Crossing,56,86,23,Backordered
+76-264-0748,Eggplant,Fruits & Vegetables,55 Morning Terrace,47,41,63,Active
+67-130-4114,Bell Pepper,Fruits & Vegetables,9327 Hanover Way,84,26,37,Backordered
+99-961-0767,Heavy Cream,Dairy,40113 Blaine Place,85,15,30,Active
+24-228-6840,Herbal Tea,Beverages,68241 Hanson Circle,27,1,3,Backordered
+83-573-4586,Sesame Oil,Oils & Fats,84575 Randy Point,77,95,82,Backordered
+80-698-0324,Butter Biscuit,Bakery,7 Duke Parkway,84,58,28,Active
+83-568-3475,Halibut,Seafood,29150 Farmco Crossing,35,72,70,Backordered
+15-846-7959,Zucchini,Fruits & Vegetables,6251 Eliot Hill,98,14,11,Discontinued
+98-148-0940,Egg (Chicken),Dairy,588 Waywood Trail,63,62,18,Active
+76-325-9093,Sesame Oil,Oils & Fats,01471 Burrows Lane,27,92,56,Discontinued
+10-034-7654,Bread Flour,Grains & Pulses,21 Esker Way,70,96,92,Backordered
+21-633-8696,Coconut Sugar,Grains & Pulses,08492 Gateway Terrace,49,59,73,Discontinued
+74-181-4135,Egg (Chicken),Dairy,79878 Katie Trail,22,19,4,Discontinued
+98-064-4465,Mozzarella Cheese,Dairy,109 Twin Pines Avenue,96,38,17,Active
+41-475-5305,Rye Bread,Bakery,88 Hooker Parkway,61,20,29,Backordered
+80-988-4653,Zucchini,Fruits & Vegetables,8 Russell Pass,43,66,85,Discontinued
+51-583-6029,Digestive Biscuit,Bakery,83894 Delaware Plaza,38,43,91,Active
+63-270-7076,Multigrain Bread,Bakery,6 Lunder Parkway,65,36,37,Backordered
+70-149-6756,Heavy Cream,Dairy,6 Messerschmidt Place,14,99,97,Discontinued
+98-909-9395,Cottage Cheese,Dairy,43 Heath Street,67,98,92,Backordered
+35-621-2546,Swiss Cheese,Dairy,3 Fairfield Center,85,89,41,Discontinued
+24-579-6500,Anchovies,Seafood,4 Stang Place,93,51,70,Active
+01-703-8441,Raw Sugar,Grains & Pulses,4029 Lotheville Pass,100,10,89,Backordered
+61-796-6540,Ricotta Cheese,Dairy,126 Spohn Plaza,88,4,79,Discontinued
+16-354-8122,Digestive Biscuit,Bakery,66 Raven Pass,97,99,96,Backordered
+67-512-9754,Egg (Turkey),Dairy,69 Orin Plaza,19,100,83,Discontinued
+11-316-8405,Mango,Fruits & Vegetables,108 Morning Center,24,55,51,Discontinued
+36-372-2295,Basmati Rice,Grains & Pulses,98 Bartillon Trail,55,13,71,Backordered
+84-075-7647,Canola Oil,Oils & Fats,51 7th Court,91,82,58,Discontinued
+08-226-5155,Bell Pepper,Fruits & Vegetables,81503 Graedel Plaza,49,93,15,Backordered
+46-496-2930,Pomegranate,Fruits & Vegetables,156 Golf Course Alley,66,28,7,Backordered
+00-215-7434,Egg (Goose),Dairy,389 Ridgeway Park,14,63,74,Backordered
+12-828-1063,Mozzarella Cheese,Dairy,018 Oxford Crossing,36,82,85,Discontinued
+48-770-6319,Egg (Duck),Dairy,34 Fremont Point,52,31,18,Backordered
+44-305-1866,Butter,Dairy,51205 Rieder Junction,48,71,86,Discontinued
+97-283-4840,Palm Oil,Oils & Fats,7232 Ridgeway Center,58,23,66,Backordered
+35-328-8392,Long Grain Rice,Grains & Pulses,09 Londonderry Hill,39,2,71,Backordered
+43-693-2092,Butter,Dairy,76 Toban Plaza,51,100,70,Discontinued
+47-802-5023,Cod,Seafood,7096 Mcguire Park,16,20,45,Active
+24-009-1208,White Tea,Beverages,99 Duke Lane,62,31,24,Backordered
+98-556-5323,Pomegranate,Fruits & Vegetables,005 Tomscot Hill,60,61,2,Active
+14-521-4167,Buttermilk,Dairy,00847 Reindahl Place,47,2,76,Discontinued
+61-607-7622,Egg (Duck),Dairy,329 Helena Park,23,38,25,Discontinued
+06-849-4869,Sesame Oil,Oils & Fats,041 Paget Alley,85,15,16,Discontinued
+41-526-4036,Whipped Cream,Dairy,38726 Gina Pass,55,25,87,Backordered
+49-570-8214,Sour Cream,Dairy,1823 Elgar Park,81,76,10,Backordered
+85-561-4694,Kiwi,Fruits & Vegetables,1 Lake View Trail,28,27,22,Discontinued
+26-629-5920,Rye Bread,Bakery,77563 Russell Lane,99,6,88,Active
+75-029-9003,Sourdough Bread,Bakery,19180 Hagan Parkway,34,42,86,Discontinued
+79-428-8753,Cabbage,Fruits & Vegetables,9 Holmberg Circle,62,79,95,Active
+34-369-7712,Apricot,Fruits & Vegetables,0 Lerdahl Parkway,55,96,40,Discontinued
+22-141-9798,White Sugar,Grains & Pulses,6 Nobel Junction,47,7,63,Backordered
+38-924-3007,Peas,Fruits & Vegetables,6 Anthes Court,12,28,11,Backordered
+70-005-5970,Apple,Fruits & Vegetables,82955 Dayton Street,84,46,80,Discontinued
+19-021-5024,Broccoli,Fruits & Vegetables,4 Heffernan Lane,47,63,86,Active
+31-403-6234,Tuna,Seafood,35 Waxwing Center,87,24,66,Active
+19-047-4239,Peach,Fruits & Vegetables,7 West Street,47,72,73,Backordered
+29-092-3453,Spinach,Fruits & Vegetables,676 Redwing Trail,61,17,69,Active
+28-956-1320,Greek Yogurt,Dairy,95 Onsgard Way,62,2,98,Discontinued
+88-069-5486,Cod,Seafood,01330 Sheridan Way,31,87,19,Active
+97-710-2449,Rye Bread,Bakery,0 Miller Pass,28,94,80,Backordered
+84-272-0790,Blueberries,Fruits & Vegetables,53 Caliangt Junction,28,86,44,Backordered
+89-602-6755,Milk,Dairy,4 Bashford Court,74,90,26,Discontinued
+63-162-9244,Eggplant,Fruits & Vegetables,04 Rockefeller Terrace,49,89,65,Active
+49-579-4325,Ricotta Cheese,Dairy,6 Anniversary Circle,64,95,62,Discontinued
+96-503-7712,White Bread,Bakery,84148 Prairie Rose Center,93,76,82,Backordered
+56-213-0577,Papaya,Fruits & Vegetables,851 Hollow Ridge Center,24,25,52,Backordered
+24-989-3302,Coconut,Fruits & Vegetables,736 Redwing Parkway,85,90,16,Backordered
+79-920-2395,Mushrooms,Fruits & Vegetables,911 Merry Junction,81,23,17,Active
+73-118-1117,Olive Oil,Oils & Fats,482 Green Center,52,88,55,Discontinued
+65-674-6076,Egg (Quail),Dairy,9738 Old Shore Trail,78,61,6,Active
+66-312-5511,Anchovies,Seafood,959 Dorton Pass,44,97,76,Discontinued
+58-005-5343,Cucumber,Fruits & Vegetables,43211 Lakeland Place,38,94,87,Discontinued
+40-795-0753,Raw Sugar,Grains & Pulses,66879 Susan Place,31,43,80,Backordered
+73-401-5721,Haddock,Seafood,582 Sauthoff Crossing,46,28,73,Discontinued
+53-680-5293,Cheddar Cheese,Dairy,97687 Mendota Terrace,88,74,97,Active
+02-170-5225,Raw Sugar,Grains & Pulses,36 Bobwhite Parkway,90,75,43,Discontinued
+55-680-0982,Green Tea,Beverages,0 Sutteridge Trail,64,66,28,Discontinued
+48-414-6162,Arabica Coffee,Beverages,17780 Lindbergh Junction,55,93,84,Active
+71-631-5875,Salmon,Seafood,13 Loomis Alley,88,83,42,Discontinued
+34-538-1180,Sour Cream,Dairy,19 Aberg Trail,29,39,80,Backordered
+48-957-6116,Eggplant,Fruits & Vegetables,938 Hanover Point,31,44,9,Discontinued
+32-261-0008,Heavy Cream,Dairy,2 Kingsford Center,63,48,22,Discontinued
+34-110-1040,Bell Pepper,Fruits & Vegetables,42397 Knutson Place,75,85,27,Discontinued
+74-132-5528,Cauliflower,Fruits & Vegetables,611 Fieldstone Drive,63,62,98,Backordered
+15-797-4824,Coconut,Fruits & Vegetables,25923 Loeprich Junction,32,27,26,Backordered
+76-854-0095,White Sugar,Grains & Pulses,7834 Cordelia Alley,65,61,82,Backordered
+94-092-3355,Cauliflower,Fruits & Vegetables,929 Thierer Lane,57,43,46,Discontinued
+99-194-5600,Cauliflower,Fruits & Vegetables,973 Spaight Place,57,25,98,Active
+40-205-8252,Multigrain Bread,Bakery,883 Marcy Place,38,37,27,Backordered
+69-674-5387,Yogurt,Dairy,6211 Hanson Terrace,59,27,63,Discontinued
+04-293-6969,Peach,Fruits & Vegetables,0 Oak Valley Lane,37,38,24,Active
+21-890-2826,Gouda Cheese,Dairy,84 Hoffman Way,48,12,62,Active
+65-759-3721,Butter Biscuit,Bakery,315 Acker Alley,33,60,67,Discontinued
+36-383-3677,Corn Oil,Oils & Fats,7 Anzinger Lane,32,38,23,Discontinued
+84-546-7624,Cherry,Fruits & Vegetables,61057 Hallows Junction,43,41,100,Active
+77-827-0820,Sesame Oil,Oils & Fats,8851 Superior Park,97,20,8,Active
+57-562-2358,Black Coffee,Beverages,00 6th Parkway,37,94,76,Backordered
+93-218-8108,Heavy Cream,Dairy,9848 Little Fleur Point,74,60,27,Backordered
+81-354-4203,Haddock,Seafood,12 Luster Terrace,76,57,78,Discontinued
+57-613-5779,Gouda Cheese,Dairy,6 John Wall Plaza,100,21,64,Backordered
+49-919-8798,Evaporated Milk,Dairy,3 Dottie Junction,64,31,91,Discontinued
+70-542-4269,Gouda Cheese,Dairy,7 Victoria Hill,41,22,11,Active
+43-670-8544,Orange,Fruits & Vegetables,3 Logan Trail,84,95,22,Discontinued
+29-436-6570,Digestive Biscuit,Bakery,30590 Bowman Alley,61,8,45,Discontinued
+10-617-7581,Peanut Oil,Oils & Fats,0 Lawn Parkway,24,14,5,Active
+50-772-2613,Cheddar Cheese,Dairy,7 Lunder Hill,86,23,1,Backordered
+26-535-4727,Tilapia,Seafood,4 Darwin Circle,93,25,23,Backordered
+88-602-8210,Avocado Oil,Oils & Fats,042 Di Loreto Court,99,96,39,Backordered
+83-966-3280,Mackerel,Seafood,0743 4th Place,30,29,70,Backordered
+21-252-1360,Corn Oil,Oils & Fats,32 Charing Cross Pass,75,23,34,Backordered
+89-922-4773,Whole Wheat Flour,Grains & Pulses,11 Thackeray Hill,39,53,64,Active
+15-884-7413,Apple,Fruits & Vegetables,6225 Westend Pass,77,58,13,Discontinued
+82-243-3180,Palm Oil,Oils & Fats,97 Sunnyside Court,43,63,80,Discontinued
+33-807-7247,Mozzarella Cheese,Dairy,63464 Jana Court,58,17,26,Backordered
+07-858-5487,Swiss Cheese,Dairy,6 Susan Alley,64,14,44,Active
+27-387-0428,Halibut,Seafood,1715 Dottie Pass,88,42,68,Active
+79-741-0770,Mushrooms,Fruits & Vegetables,91 Kinsman Terrace,72,87,39,Active
+34-086-3222,Lemon,Fruits & Vegetables,867 Merrick Place,12,7,48,Discontinued
+93-166-3169,White Tea,Beverages,339 Crescent Oaks Plaza,58,81,66,Active
+74-548-9313,Mango,Fruits & Vegetables,1 Judy Street,99,59,12,Backordered
+53-710-7630,Rice Flour,Grains & Pulses,996 Thierer Center,25,95,71,Backordered
+64-119-7804,Bell Pepper,Fruits & Vegetables,06584 Mendota Avenue,98,43,9,Backordered
+40-810-9261,Green Coffee,Beverages,3 Raven Court,75,47,33,Discontinued
+91-553-1774,Feta Cheese,Dairy,84 Washington Crossing,80,43,80,Active
+39-192-3521,Herbal Tea,Beverages,428 Oriole Avenue,20,9,12,Discontinued
+63-890-1246,Oatmeal Biscuit,Bakery,3 Melrose Trail,93,50,43,Discontinued
+71-954-4501,Anchovies,Seafood,290 Rusk Avenue,66,49,41,Discontinued
+00-357-2313,Avocado Oil,Oils & Fats,0 Oxford Crossing,10,86,23,Backordered
+29-756-7042,Digestive Biscuit,Bakery,99 Fair Oaks Circle,90,52,50,Discontinued
+92-551-8504,Raw Sugar,Grains & Pulses,461 Bluejay Circle,19,81,33,Backordered
+61-317-9944,White Bread,Bakery,21844 Artisan Trail,72,20,71,Discontinued
+03-276-3931,Mango,Fruits & Vegetables,081 Bellgrove Place,60,36,28,Active
+02-275-6061,Potato,Fruits & Vegetables,6891 Mandrake Park,26,16,69,Discontinued
+72-970-0239,Sesame Oil,Oils & Fats,73966 Pond Trail,85,86,21,Backordered
+36-679-4670,Bell Pepper,Fruits & Vegetables,5 Warner Court,90,22,20,Backordered
+13-409-9040,White Tea,Beverages,9623 Cottonwood Park,35,20,42,Discontinued
+88-408-0310,Corn Oil,Oils & Fats,5 Mesta Center,50,40,69,Active
+57-359-3397,Garlic,Fruits & Vegetables,81071 West Alley,43,40,30,Active
+01-050-2246,Grapes,Fruits & Vegetables,38 Esch Pass,99,68,1,Discontinued
+47-581-0363,Parmesan Cheese,Dairy,8 Dawn Court,99,10,88,Active
+33-670-6797,Mackerel,Seafood,2869 Hudson Drive,45,56,64,Discontinued
+69-578-7930,Brown Rice,Grains & Pulses,83291 Hansons Crossing,44,67,31,Discontinued
+75-672-4378,Pomegranate,Fruits & Vegetables,4 Esch Point,62,40,86,Backordered
+31-211-5803,Oatmeal Biscuit,Bakery,492 Shoshone Road,16,9,32,Backordered
+49-861-7823,Coconut,Fruits & Vegetables,26 Graceland Circle,99,8,27,Discontinued
+84-624-0201,Bread Flour,Grains & Pulses,9 Eastlawn Crossing,71,77,30,Backordered
+66-993-4234,Cucumber,Fruits & Vegetables,22 Dexter Trail,13,60,100,Backordered
+00-963-2193,Milk,Dairy,5030 Moose Junction,43,88,33,Discontinued
+99-420-3592,Butter Biscuit,Bakery,206 Pine View Junction,22,24,94,Active
+76-623-7844,Egg (Quail),Dairy,868 Swallow Point,29,33,88,Discontinued
+28-003-8065,Almond Flour,Grains & Pulses,65 Merry Circle,79,47,51,Discontinued
+28-008-2951,Broccoli,Fruits & Vegetables,26 Barnett Junction,95,29,28,Discontinued
+45-402-0421,Swiss Cheese,Dairy,36 Longview Street,70,84,72,Active
+73-942-0508,Kale,Fruits & Vegetables,1034 2nd Point,61,100,94,Backordered
+22-266-9291,Sardines,Seafood,111 David Hill,11,17,59,Backordered
+06-068-6793,Buttermilk,Dairy,25 Nancy Place,39,80,68,Discontinued
+58-063-8633,Bell Pepper,Fruits & Vegetables,33424 Express Avenue,50,3,88,Discontinued
+27-442-3654,Herbal Tea,Beverages,67677 Lakewood Gardens Way,59,17,1,Active
+03-043-9933,Strawberries,Fruits & Vegetables,884 Fieldstone Plaza,16,23,76,Backordered
+99-137-1730,Bread Flour,Grains & Pulses,4105 Fair Oaks Parkway,62,79,23,Active
+09-622-7119,Haddock,Seafood,665 Sommers Circle,30,81,99,Backordered
+95-356-1566,Grapes,Fruits & Vegetables,622 Buena Vista Trail,13,61,77,Backordered
+22-319-1377,White Sugar,Grains & Pulses,083 Gulseth Pass,14,16,93,Active
+89-181-4523,Wild Rice,Grains & Pulses,022 Prairie Rose Drive,46,6,64,Discontinued
+38-555-9147,Black Coffee,Beverages,0 Oneill Hill,62,23,25,Discontinued
+53-667-4109,Onion,Fruits & Vegetables,992 East Point,16,75,42,Active
+14-489-8669,All-Purpose Flour,Grains & Pulses,21629 Burrows Pass,54,69,68,Discontinued
+26-031-8070,Vegetable Oil,Oils & Fats,5414 Linden Point,57,99,23,Backordered
+47-221-2470,Pomegranate,Fruits & Vegetables,60 Messerschmidt Pass,17,45,44,Active
+67-382-4435,Green Beans,Fruits & Vegetables,92 Bartelt Terrace,99,37,74,Active
+94-029-2717,Broccoli,Fruits & Vegetables,071 Nobel Circle,40,8,98,Discontinued
+47-866-6589,Egg (Duck),Dairy,30880 Barnett Junction,41,61,69,Discontinued
+94-355-3070,Tilapia,Seafood,116 Spaight Park,14,52,80,Discontinued
+82-342-7339,Vanilla Biscuit,Bakery,317 Anniversary Pass,80,61,23,Backordered
+80-459-5950,Arabica Coffee,Beverages,5 Killdeer Trail,74,10,74,Backordered
+67-248-6306,Cauliflower,Fruits & Vegetables,05 Bartelt Street,77,54,10,Active
+68-973-8812,Sweet Potato,Fruits & Vegetables,55 Cherokee Circle,44,77,45,Discontinued
+11-325-7396,Mango,Fruits & Vegetables,387 Jay Point,92,46,13,Discontinued
+68-761-6907,Zucchini,Fruits & Vegetables,9695 Alpine Trail,26,18,62,Discontinued
+62-509-0666,Almond Flour,Grains & Pulses,1468 Meadow Vale Court,13,88,7,Backordered
+44-476-0390,Lemon,Fruits & Vegetables,022 Pierstorff Point,90,92,56,Active
+08-213-2058,Sour Cream,Dairy,33 Clarendon Hill,43,73,14,Active
+35-529-2933,Broccoli,Fruits & Vegetables,2 School Drive,85,54,18,Discontinued
+24-364-3341,Egg (Turkey),Dairy,120 Gale Circle,44,84,63,Discontinued
+65-644-1394,Pear,Fruits & Vegetables,582 Dahle Center,26,95,36,Active
+88-401-3700,Cauliflower,Fruits & Vegetables,39014 Randy Court,86,66,24,Discontinued
+47-441-7682,Digestive Biscuit,Bakery,4247 David Crossing,40,91,24,Discontinued
+68-977-2498,Grapes,Fruits & Vegetables,6482 Ramsey Alley,88,99,41,Backordered
+37-567-3218,Almond Flour,Grains & Pulses,153 Caliangt Plaza,37,47,34,Backordered
+87-903-3486,Peanut Oil,Oils & Fats,99 Twin Pines Alley,21,25,39,Active
+96-316-7600,Bell Pepper,Fruits & Vegetables,6 Swallow Crossing,70,31,55,Discontinued
+00-842-9790,Egg (Goose),Dairy,53894 Myrtle Place,65,94,4,Backordered
+96-164-0607,Coconut Oil,Oils & Fats,1275 Lawn Center,89,79,66,Discontinued
+04-240-2226,Olive Oil,Oils & Fats,504 Green Park,47,48,73,Discontinued
+97-772-2336,Pineapple,Fruits & Vegetables,9 Bartillon Trail,70,30,69,Discontinued
+63-822-5278,Pomegranate,Fruits & Vegetables,5900 Vahlen Avenue,14,66,1,Backordered
+19-967-0632,Short Grain Rice,Grains & Pulses,6990 Kings Place,53,86,54,Discontinued
+28-986-8001,Pomegranate,Fruits & Vegetables,4 Old Shore Avenue,65,69,4,Active
+44-128-2185,Jasmine Rice,Grains & Pulses,012 Mockingbird Court,98,20,81,Backordered
+84-327-7787,Egg (Chicken),Dairy,739 Rowland Way,83,35,43,Discontinued
+50-364-5828,Coconut,Fruits & Vegetables,772 Golf Course Junction,89,57,92,Active
+65-368-2479,Egg (Turkey),Dairy,231 Merry Pass,23,21,59,Active
+17-253-5688,Greek Yogurt,Dairy,7 Hooker Way,39,55,39,Backordered
+29-205-1132,Sushi Rice,Grains & Pulses,48 Del Sol Trail,22,72,70,Discontinued
+64-854-8664,Peanut Oil,Oils & Fats,76 Independence Drive,79,3,36,Discontinued
+66-627-9752,Trout,Seafood,08 Randy Junction,49,73,48,Active
+62-795-7801,Palm Oil,Oils & Fats,94451 Arkansas Park,35,41,84,Backordered
+40-683-0283,White Sugar,Grains & Pulses,322 Birchwood Center,27,64,78,Active
+87-423-8486,Powdered Sugar,Grains & Pulses,5 Homewood Street,63,4,46,Discontinued
+16-499-5059,Pear,Fruits & Vegetables,3 Hooker Way,77,20,5,Discontinued
+05-334-2923,Bread Flour,Grains & Pulses,8 Surrey Pass,14,74,71,Discontinued
+74-845-3299,Green Tea,Beverages,2 Petterle Road,63,92,26,Active
+10-249-7928,Black Rice,Grains & Pulses,57598 Russell Center,85,4,75,Backordered
+08-725-8156,Tilapia,Seafood,73397 Steensland Circle,59,59,10,Active
+41-240-8856,Haddock,Seafood,8 Autumn Leaf Drive,79,53,12,Discontinued
+35-257-9312,Parmesan Cheese,Dairy,9463 Northland Court,80,100,48,Backordered
+13-980-8804,Sweet Potato,Fruits & Vegetables,41 Nelson Center,100,3,32,Backordered
+68-977-6854,Apricot,Fruits & Vegetables,2633 Shasta Alley,90,30,42,Backordered
+90-773-9557,Butter,Dairy,904 Del Mar Crossing,85,28,21,Active
+89-328-9019,Bread Flour,Grains & Pulses,33774 Carberry Circle,63,43,8,Active
+59-075-2457,Egg (Goose),Dairy,2 Barby Lane,97,26,15,Discontinued
+31-627-6025,White Bread,Bakery,44638 Corscot Lane,56,62,64,Backordered
+28-824-9017,Trout,Seafood,4 Jay Terrace,19,94,17,Discontinued
+06-858-5680,Sesame Oil,Oils & Fats,49476 Tony Hill,15,34,57,Discontinued
+38-732-7667,Pineapple,Fruits & Vegetables,3645 Ridge Oak Drive,18,52,22,Backordered
+85-237-3505,Green Tea,Beverages,20073 Northfield Way,88,50,88,Discontinued
+73-117-6105,Brown Rice,Grains & Pulses,955 4th Road,44,48,77,Discontinued
+46-436-5351,Green Tea,Beverages,226 Calypso Road,80,54,21,Active
+56-303-5256,Wild Rice,Grains & Pulses,3 Hermina Circle,58,24,25,Active
+57-394-1587,Bread Flour,Grains & Pulses,561 Blue Bill Park Road,57,63,41,Discontinued
+51-934-9117,Sardines,Seafood,05944 Scott Parkway,30,55,4,Active
+77-377-1659,Almond Flour,Grains & Pulses,6 Acker Street,74,22,91,Active
+27-262-2437,Swiss Cheese,Dairy,739 Swallow Road,80,9,29,Active
+71-085-4290,Cucumber,Fruits & Vegetables,2 Basil Street,31,98,72,Active
+87-675-1506,Strawberries,Fruits & Vegetables,60241 Portage Point,31,89,7,Discontinued
+77-224-2227,Almond Flour,Grains & Pulses,5426 Fordem Pass,75,46,75,Backordered
+94-658-4945,Sweet Potato,Fruits & Vegetables,15 Veith Circle,65,10,81,Backordered
+15-562-3712,Cauliflower,Fruits & Vegetables,1 Hudson Hill,33,89,15,Discontinued
+98-546-7398,Yogurt,Dairy,15658 Talisman Lane,80,69,71,Backordered
+36-177-0573,Egg (Turkey),Dairy,35 Portage Road,92,1,23,Discontinued
+39-358-3340,Basmati Rice,Grains & Pulses,308 Doe Crossing Pass,71,60,62,Discontinued
+11-733-1756,Rice Flour,Grains & Pulses,127 Eliot Road,52,81,53,Backordered
+01-026-2772,Blueberries,Fruits & Vegetables,3 Bunting Point,40,61,47,Discontinued
+84-198-7276,Peanut Oil,Oils & Fats,6 Harbort Hill,60,88,65,Active
+56-810-0550,Mackerel,Seafood,376 Reinke Court,71,7,6,Backordered
+40-751-8635,Pineapple,Fruits & Vegetables,3 Ronald Regan Center,44,80,84,Discontinued
+14-305-9690,Sushi Rice,Grains & Pulses,43107 Schlimgen Circle,19,17,14,Active
+83-727-0814,Basmati Rice,Grains & Pulses,28 Boyd Pass,11,87,64,Active
+71-015-9181,Pomegranate,Fruits & Vegetables,62238 Mallory Place,22,35,55,Active
+51-572-5497,Orange,Fruits & Vegetables,9516 Burrows Circle,15,44,88,Discontinued
+06-797-4963,Pomegranate,Fruits & Vegetables,1008 Welch Street,52,8,37,Active
+42-141-5718,Cheese,Dairy,1700 Briar Crest Parkway,100,31,43,Backordered
+37-606-0510,Milk,Dairy,53 Homewood Alley,18,64,86,Active
+44-480-9446,Sunflower Oil,Oils & Fats,43591 East Road,39,13,13,Active
+78-237-0277,Black Tea,Beverages,79 Cardinal Court,46,27,76,Active
+87-997-0228,Watermelon,Fruits & Vegetables,26240 Maple Wood Place,71,4,37,Discontinued
+42-674-3917,Whole Wheat Flour,Grains & Pulses,78 Forest Dale Road,41,76,47,Backordered
+28-185-7303,Robusta Coffee,Beverages,25696 Westerfield Alley,59,31,3,Active
+45-852-2446,Salmon,Seafood,56 Petterle Circle,73,12,28,Active
+56-831-6199,Salmon,Seafood,1247 Hoard Hill,49,48,62,Active
+82-538-4809,Cabbage,Fruits & Vegetables,700 Northland Crossing,83,61,4,Backordered
+87-698-0944,Banana,Fruits & Vegetables,8 Heffernan Point,56,12,59,Active
+30-964-2694,Peas,Fruits & Vegetables,39 Dovetail Terrace,48,72,55,Active
+09-335-7793,Powdered Sugar,Grains & Pulses,5649 Vidon Plaza,66,19,20,Active
+99-033-5661,Rice Flour,Grains & Pulses,289 Longview Point,42,3,21,Active
+90-128-7973,Black Rice,Grains & Pulses,46989 Crescent Oaks Junction,49,3,7,Backordered
+52-797-6961,Tilapia,Seafood,13799 Quincy Park,46,80,88,Discontinued
+39-232-5341,Arborio Rice,Grains & Pulses,05433 Towne Terrace,20,34,74,Discontinued
+46-931-6897,Cream,Dairy,44 Kensington Road,29,32,26,Discontinued
+56-937-8675,Cream,Dairy,668 Claremont Place,62,91,14,Discontinued
+54-830-6971,Tilapia,Seafood,674 Ryan Alley,100,61,21,Backordered
+90-865-9150,Powdered Sugar,Grains & Pulses,00029 Fisk Point,28,24,97,Discontinued
+42-887-6557,Long Grain Rice,Grains & Pulses,61224 Northridge Avenue,26,82,19,Active
+94-190-5193,Carrot,Fruits & Vegetables,24385 Prentice Plaza,67,68,50,Discontinued
+00-440-9568,Blueberries,Fruits & Vegetables,052 Northland Trail,53,98,25,Active
+74-294-3760,Peanut Oil,Oils & Fats,0109 Stang Terrace,49,17,54,Discontinued
+66-806-6051,Yogurt,Dairy,8 Kensington Place,63,12,82,Backordered
+81-844-2979,Broccoli,Fruits & Vegetables,16 Elgar Point,73,87,46,Discontinued
+80-072-8774,Tuna,Seafood,239 Anderson Court,89,95,41,Discontinued
+80-039-1261,Strawberries,Fruits & Vegetables,1 Havey Park,26,97,12,Discontinued
+58-219-0241,Avocado Oil,Oils & Fats,938 Garrison Court,50,36,81,Discontinued
+94-528-8088,Haddock,Seafood,21379 Stoughton Junction,43,7,63,Active
+95-349-0828,Feta Cheese,Dairy,60 Towne Hill,97,57,84,Active
+03-061-1344,Trout,Seafood,96420 Briar Crest Lane,98,65,76,Active
+67-984-5368,Parmesan Cheese,Dairy,0 Fordem Place,52,56,34,Backordered
+44-782-1395,Raw Sugar,Grains & Pulses,365 Vera Terrace,72,72,68,Active
+75-927-9108,Cabbage,Fruits & Vegetables,43 Washington Street,24,32,17,Discontinued
+78-614-4402,Green Beans,Fruits & Vegetables,37 Browning Trail,81,99,28,Discontinued
+01-903-5373,Strawberries,Fruits & Vegetables,32525 Marquette Park,94,77,89,Discontinued
