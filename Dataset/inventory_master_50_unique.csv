@@ -1,0 +1,51 @@
+inventory_id,item_name,category,form,use,item_type,vendor_id,min_stock,max_capacity,opening_stock
+INV0001,Milk 1L,Beverage,Pack,Food,Non-Perishable,V009,39,201,77
+INV0002,Cheddar Cheese,Snack,Pack,Food,Perishable,V004,21,453,160
+INV0003,Yogurt,Bakery,Solid,Food,Perishable,V009,25,339,241
+INV0004,Banana,Snack,Pack,Food,Non-Perishable,V003,41,236,274
+INV0005,Apple,Snack,Pack,Non-Food,Perishable,V007,30,359,246
+INV0006,Bread Loaf,Produce,Liquid,Food,Non-Perishable,V006,35,208,110
+INV0007,Bagel,Bakery,Solid,Non-Food,Non-Perishable,V008,35,432,97
+INV0008,Orange Juice,Bakery,Liquid,Food,Non-Perishable,V009,20,298,196
+INV0009,Soda Can,Bakery,Liquid,Non-Food,Perishable,V005,28,346,53
+INV0010,Chocolate Bar,Snack,Liquid,Food,Perishable,V001,47,407,84
+INV0011,Eggs Dozen,Beverage,Liquid,Food,Perishable,V003,46,330,241
+INV0012,Butter 250g,Bakery,Liquid,Non-Food,Perishable,V010,25,351,98
+INV0013,Cereal Box,Snack,Liquid,Non-Food,Perishable,V008,35,253,66
+INV0014,Tomato,Produce,Liquid,Non-Food,Perishable,V006,48,319,221
+INV0015,Potato,Beverage,Solid,Food,Perishable,V008,22,360,269
+INV0016,Carrot,Produce,Pack,Non-Food,Non-Perishable,V009,39,315,207
+INV0017,Frozen Peas,Beverage,Liquid,Food,Perishable,V004,47,274,270
+INV0018,Chicken Breast,Snack,Liquid,Food,Non-Perishable,V001,46,312,95
+INV0019,Beef Steak,Dairy,Liquid,Non-Food,Perishable,V001,23,303,166
+INV0020,Salmon Fillet,Beverage,Liquid,Non-Food,Perishable,V010,38,453,55
+INV0021,Rice 1kg,Produce,Liquid,Food,Perishable,V004,45,426,148
+INV0022,Pasta 500g,Snack,Liquid,Food,Non-Perishable,V007,22,311,173
+INV0023,Olive Oil 500ml,Beverage,Pack,Non-Food,Non-Perishable,V002,38,298,282
+INV0024,Coffee Beans,Dairy,Pack,Non-Food,Non-Perishable,V003,39,352,86
+INV0025,Tea Pack,Dairy,Liquid,Non-Food,Non-Perishable,V001,26,393,73
+INV0026,Sugar 1kg,Bakery,Pack,Food,Perishable,V005,39,362,142
+INV0027,Salt 500g,Bakery,Solid,Food,Non-Perishable,V001,28,407,290
+INV0028,Flour 1kg,Produce,Liquid,Food,Perishable,V008,20,368,95
+INV0029,Lettuce,Beverage,Solid,Food,Perishable,V001,27,360,230
+INV0030,Cucumber,Beverage,Solid,Food,Non-Perishable,V001,26,267,144
+INV0031,Onion,Bakery,Liquid,Food,Non-Perishable,V002,37,488,148
+INV0032,Garlic,Beverage,Pack,Non-Food,Non-Perishable,V002,27,476,237
+INV0033,Strawberry Pack,Beverage,Solid,Food,Non-Perishable,V006,20,334,274
+INV0034,Blueberry Pack,Dairy,Liquid,Food,Non-Perishable,V007,30,394,165
+INV0035,Mango,Bakery,Solid,Food,Non-Perishable,V005,47,327,240
+INV0036,Orange,Snack,Solid,Non-Food,Non-Perishable,V001,44,232,262
+INV0037,Water Bottle 1L,Bakery,Solid,Food,Non-Perishable,V001,44,375,209
+INV0038,Energy Drink,Snack,Solid,Food,Perishable,V003,37,221,264
+INV0039,Chips Pack,Dairy,Pack,Non-Food,Non-Perishable,V002,42,437,210
+INV0040,Cookies,Produce,Solid,Food,Non-Perishable,V005,49,357,116
+INV0041,Peanut Butter,Beverage,Solid,Food,Perishable,V010,29,237,177
+INV0042,Jam Jar,Dairy,Solid,Food,Non-Perishable,V006,22,429,67
+INV0043,Honey,Beverage,Pack,Food,Perishable,V007,26,250,74
+INV0044,Yogurt Drink,Produce,Solid,Food,Perishable,V004,47,463,283
+INV0045,Frozen Pizza,Produce,Solid,Non-Food,Non-Perishable,V007,35,482,272
+INV0046,Ice Cream,Dairy,Pack,Non-Food,Perishable,V008,45,226,103
+INV0047,Detergent,Produce,Pack,Non-Food,Perishable,V001,35,425,107
+INV0048,Dish Soap,Snack,Pack,Food,Perishable,V006,44,476,116
+INV0049,Paper Towels,Produce,Solid,Food,Perishable,V008,39,485,153
+INV0050,Toilet Paper,Beverage,Pack,Food,Non-Perishable,V005,47,296,223
