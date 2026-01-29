@@ -1,0 +1,22 @@
+<mxfile>
+  <diagram name="UC1_Inventory_Health_Monitoring">
+    <mxGraphModel>
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="actor" value="Inventory Data Source" style="ellipse;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="160" width="160" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="uc" value="Monitor Inventory Health" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="300" y="160" width="220" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge1" style="endArrow=block;" edge="1" parent="1" source="actor" target="uc">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

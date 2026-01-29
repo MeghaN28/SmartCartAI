@@ -81,7 +81,7 @@ for idx, prod in inventory_master_df.iterrows():
     vendor_id = prod['vendor_id']
     lead_time_days = np.random.randint(1, 7)
     department_count = np.random.randint(1, 6)
-    
+
     for day_idx, current_date in enumerate(dates):
         # ---------- Consumption ----------
         num_consumptions = np.random.randint(1, 4)
@@ -96,7 +96,7 @@ for idx, prod in inventory_master_df.iterrows():
             remaining_stock = stock - quantity_consumed
             stock -= quantity_consumed
             total_consumed += quantity_consumed
-            
+
             consumption_records.append({
                 'transaction_id': f'TX{idx:03d}{day_idx:03d}{c:02d}',
                 'date': current_date.date(),
@@ -109,14 +109,14 @@ for idx, prod in inventory_master_df.iterrows():
                 'remaining_stock': remaining_stock,
                 'batch_lot': batch_lot
             })
-        
+
         # ---------- Restock ----------
         quantity_restocked = np.random.randint(0, 50)
         stock += quantity_restocked
-        
+
         out_of_stock = stock == 0
         low_stock = stock < min_stock
-        
+
         inventory_records.append({
             'date': current_date.date(),
             'inventory_id': inventory_id,
@@ -137,7 +137,7 @@ for idx, prod in inventory_master_df.iterrows():
             'out_of_stock': out_of_stock,
             'low_stock': low_stock
         })
-        
+
         # ---------- Sales ----------
         num_sales = np.random.randint(1, 4)
         for s in range(num_sales):
@@ -148,6 +148,7 @@ for idx, prod in inventory_master_df.iterrows():
             account_code = f'AC{np.random.randint(1000,9999)}'
             delivery_date = current_date + timedelta(days=np.random.randint(0,5))
             payment_status = np.random.choice(['Paid','Pending'])
+
             sales_records.append({
                 'invoice_id': f'INVX{idx:03d}{day_idx:03d}{s:02d}',
                 'vendor_id': vendor_id,
@@ -165,12 +166,40 @@ for idx, prod in inventory_master_df.iterrows():
 # CREATE DATAFRAMES
 # ------------------------------
 inventory_master_df.to_csv('inventory_master_50_unique.csv', index=False)
+
 inventory_history_df = pd.DataFrame(inventory_records)
+
+# --------- UNIQUE INVENTORY HISTORY (AGGREGATED) ----------
+inventory_history_unique_df = (
+    inventory_history_df
+    .sort_values('date')
+    .groupby('inventory_id', as_index=False)
+    .agg({
+        'date': 'max',
+        'opening_stock': 'first',
+        'closing_stock': 'last',
+        'quantity_consumed': 'sum',
+        'quantity_restocked': 'sum',
+        'vendor_id': 'first',
+        'lead_time_days': 'mean',
+        'department_count': 'max',
+        'min_stock': 'first',
+        'max_capacity': 'first',
+        'item_name': 'first',
+        'category': 'first',
+        'form': 'first',
+        'use': 'first',
+        'item_type': 'first',
+        'out_of_stock': 'max',
+        'low_stock': 'max'
+    })
+)
+
 consumption_df = pd.DataFrame(consumption_records)
 sales_df = pd.DataFrame(sales_records)
 
-inventory_history_df.to_csv('inventory_history_50.csv', index=False)
+inventory_history_unique_df.to_csv('inventory_history_50_unique.csv', index=False)
 consumption_df.to_csv('consumption_50.csv', index=False)
 sales_df.to_csv('sales_50.csv', index=False)
 
-print("Generated Inventory Master, Inventory History, Consumption, and Sales datasets for 50 unique items!")
+print("Generated Inventory Master, UNIQUE Inventory History, Consumption, and Sales datasets for 50 unique items!")

@@ -1,0 +1,64 @@
+<mxfile host="app.diagrams.net" modified="2026-01-27T00:00:00.000Z" agent="Gemini" version="21.0.0" type="device">
+  <diagram id="SmartCart_Architecture_Detailed" name="Detailed SmartCart AI Architecture">
+    <mxGraphModel dx="1400" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="1600" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <mxCell id="gcp_cloud" value="GCP CLOUD" style="shape=rect;html=1;verticalAlign=top;fontStyle=1;whiteSpace=wrap;fillColor=#f8f9fa;strokeColor=#343a40;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="1120" height="720" as="geometry" />
+        </mxCell>
+
+        <mxCell id="db" value="PostgreSQL&#xa;(Inventory, Sales,&#xa;Demand Data)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="80" y="320" width="100" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="java_api" value="Spring Boot&#xa;Java APIs" style="shape=module;align=left;spacingLeft=20;align=center;verticalAlign=middle;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="240" y="340" width="120" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="agent_layer" value="AGENTIC ORCHESTRATION LAYER (LangGraph)" style="swimlane;fontStyle=1;align=center;verticalAlign=top;childLayout=stackLayout;horizontal=1;startSize=30;horizontalStack=0;fillColor=#f3e5f5;strokeColor=#ce93d8;" vertex="1" parent="1">
+          <mxGeometry x="440" y="100" width="480" height="560" as="geometry" />
+        </mxCell>
+
+        <mxCell id="inv_agent" value="Inventory Agent&#xa;(Python/LangChain)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1f5fe;strokeColor=#01579b;" vertex="1" parent="agent_layer">
+          <mxGeometry x="40" y="60" width="160" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dec_orch" value="Decision Orchestrator&#xa;(Decision Agent)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1f5fe;strokeColor=#01579b;fontStyle=1" vertex="1" parent="agent_layer">
+          <mxGeometry x="260" y="180" width="180" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="sa1" value="Risk Assessment&#xa;Sub-Agent" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontSize=11;" vertex="1" parent="agent_layer">
+          <mxGeometry x="40" y="300" width="130" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="sa2" value="Feasibility&#xa;Sub-Agent" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontSize=11;" vertex="1" parent="agent_layer">
+          <mxGeometry x="190" y="300" width="130" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="sa3" value="Cost/Impact&#xa;Sub-Agent" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontSize=11;" vertex="1" parent="agent_layer">
+          <mxGeometry x="40" y="360" width="130" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="sa4" value="Explanation Gen&#xa;Sub-Agent" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontSize=11;" vertex="1" parent="agent_layer">
+          <mxGeometry x="190" y="360" width="130" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="mistral" value="Mistral LLM&#xa;(via Bedrock/Vertex)" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#ffebee;strokeColor=#ef9a9a;" vertex="1" parent="1">
+          <mxGeometry x="980" y="280" width="150" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="mobile_app" value="React Native&#xa;App" style="shape=device;whiteSpace=wrap;html=1;fillColor=#e1f5fe;strokeColor=#01579b;" vertex="1" parent="1">
+          <mxGeometry x="240" y="600" width="120" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f1" source="db" target="java_api" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" />
+        <mxCell id="f2" value="Inventory Stats" source="java_api" target="inv_agent" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" />
+        <mxCell id="f3" value="Risk Insights" source="inv_agent" target="dec_orch" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" />
+        <mxCell id="f4" value="Call Sub-Agents" source="dec_orch" target="sa1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" />
+        <mxCell id="f5" value="Inference" source="dec_orch" target="mistral" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" />
+        <mxCell id="f6" value="Recommendations&#xa;&amp; Explanations" source="java_api" target="mobile_app" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;" edge="1" parent="1" />
+        <mxCell id="f7" value="User Feedback" source="mobile_app" target="java_api" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" />
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
