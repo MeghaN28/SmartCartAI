@@ -8,7 +8,8 @@ SUBAGENTS = {
     "feasibility": "http://localhost:9001/feasibility",
     "cost_impact": "http://localhost:9002/cost-impact",
     "explanation": "http://localhost:9003/explain",
-    "risk": "http://localhost:9004/risk"
+    "risk": "http://localhost:9004/risk",
+    "inventory": "http://localhost:9005/inventory"
 }
 
 

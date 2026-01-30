@@ -13,6 +13,10 @@
       - cost-impact/
       - explanation/
       - risk-assessment/
+  - inventory-agent/
+    - agent.py
+    - README.md
+    - tests/
 
 - /database/
   - schema.sql

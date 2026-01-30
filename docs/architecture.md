@@ -4,7 +4,9 @@ This document maps the repository structure to the architecture diagram (see `Da
 
 ## Mappings 🔧
 - `SmartCartAIBackend/services/` — Java REST APIs (Inventory, Sales, Demand) that read/write to `database/` tables.
-- `agents/` — Agent code (Decision-Orchestration Agent + Sub-Agents: Feasibility, CostImpact, Explanation, RiskAssessment).
+- `Agents/` — Agent code:
+  - `decision-orchestration-agent/` — Orchestrates decisions by calling subagents (feasibility, cost-impact, explanation, risk-assessment).
+  - `inventory-agent/` — Monitors inventory, reports events to the Decision Orchestration Agent, and receives directives (reorder/hold/transfer). Integrates with `SmartCartAIBackend/services/inventory-service`.
 - `database/` — SQL schema and DB helpers.
 - `docs/` — Architecture docs and diagrams.
 
