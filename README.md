@@ -42,7 +42,7 @@ SmartCartAI/
 │       ├── inventory.tsx      # Inventory overview
 │       ├── decisions.tsx
 │       └── impact.tsx
-└── infra/                     # docker-compose, deployment blueprints
+
 ```
 
 ## Architecture layers
