@@ -1,0 +1,20 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install deps and run flake8
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8
+          flake8 . || true
+
+# Modify CI to run your actual build and tests once service implementations exist.

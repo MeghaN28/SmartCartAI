@@ -21,30 +21,62 @@ SmartCartAI/
 │   ├── inventory_master_50_unique.csv
 │   ├── sales_50.csv
 │   └── consumption_50.csv
-├── SmartCartAIBackend/        # Java backend application
+├── SmartCartAIBackend/        # Java backend application + services
 │   ├── README.md
+│   ├── services/              # Inventory, Sales, Demand services
+│   │   ├── inventory-service/
+│   │   ├── sales-service/
+│   │   └── demand-service/
 │   ├── lib/
 │   └── src/
 │       └── App.java
-└── SmartCartAIFrontEnd/       # React Native/Expo frontend
-    ├── app.json
-    ├── package.json
-    ├── app/
-    │   ├── _layout.tsx
-    │   ├── (tabs)/
-    │   │   ├── _layout.tsx
-    │   │   ├── index.tsx      # Dashboard
-    │   │   └── explore.tsx
-    │   ├── inventory.tsx      # Inventory overview
-    │   ├── decisions.tsx
-    │   ├── impact.tsx
-    │   └── modal.tsx
-    ├── components/
-    │   ├── StatCard.tsx
-    │   ├── InventoryItem.tsx
-    │   └── ...
-    └── ...
+├── SmartCartAIFrontEnd/       # React Native/Expo frontend
+│   ├── app.json
+│   ├── package.json
+│   └── app/
+│       ├── _layout.tsx
+│       ├── (tabs)/
+│       │   ├── _layout.tsx
+│       │   ├── index.tsx      # Dashboard
+│       │   └── explore.tsx
+│       ├── inventory.tsx      # Inventory overview
+│       ├── decisions.tsx
+│       └── impact.tsx
+└── infra/                     # docker-compose, deployment blueprints
 ```
+
+## Architecture layers
+
+This project is organized in clearly separated layers that map to the architecture diagram (`Dataset/SmartCartAI_UseCases.drawio`). Below is a short description of each layer and its responsibilities.
+
+- **User Interface (UI) — `SmartCartAIFrontEnd/`** 🔧
+  - Cross-platform React Native (Expo) mobile app that displays the dashboard, inventory list, decision recommendations, and impact analysis.
+  - Communicates with the backend services and agents through REST APIs.
+  - Responsibilities: visualization, user actions, showing explanations and agent recommendations.
+
+- **Agents — `Agents/`** 🤖
+  - Contains AI agents and helper scripts. The main **Decision-Orchestration Agent** coordinates subagents (Feasibility, CostImpact, Explanation, RiskAssessment).
+  - Responsibilities: orchestrate decision-making, aggregate signals, request subagent analyses, and return structured recommendations and explanations for the UI.
+
+- **Backend Services — `SmartCartAIBackend/services/`** 🛠️
+  - Microservices that provide REST APIs for core domain data:
+    - Inventory Service — inventory CRUD, flagging, recommendations endpoint
+    - Sales Service — sales data access and ingestion
+    - Demand Service — demand predictions and related endpoints
+  - Each service owns its API contract and reads/writes to the shared database.
+
+- **Database — `database/`** 🗄️
+  - SQL schema and migration artifacts live here (`database/schema.sql`).
+  - Stores inventory, sales, and demand data used by services and agents.
+
+- **Dataset & Data Generation — `Dataset/`** 🧾
+  - Scripts and CSV sample data for testing and prototyping (e.g., `createdataset.py`, `sales_50.csv`, `inventory_master_50_unique.csv`).
+  - Used to train models or run experiments in the Agents layer.
+
+
+- **Docs & CI — `docs/`, `.github/workflows/`** 📚
+  - Architecture documentation and CI placeholders. Keep these up to date as services and tests are added.
+
 
 ## Installation
 
@@ -84,6 +116,30 @@ SmartCartAI/
    javac -d bin src/App.java
    java -cp bin App
    ```
+
+3. Service placeholders for Inventory, Sales and Demand live under `SmartCartAIBackend/services/`. Once implemented, you can build the service images and run the local stack using `infra/docker-compose.yml` (see `infra/` for a placeholder `docker-compose.yml`).
+
+How to run placeholders locally:
+
+- Build and run the placeholder stack:
+  ```bash
+  docker-compose -f infra/docker-compose.yml up --build -d
+  ```
+
+- Verify services (example):
+  - Inventory: http://localhost:8081/inventory
+  ```bash
+  curl http://localhost:8081/inventory || echo "inventory service not responding"
+  ```
+
+- Stop the stack:
+  ```bash
+  docker-compose -f infra/docker-compose.yml down
+  ```
+
+Notes:
+- Update `infra/docker-compose.yml` to point to local `build:` contexts or pushed image names once you implement the services. 🔧
+- Add CI steps to build and publish images to a registry when services are production-ready. 🚀
 
 ### Data Generation
 
