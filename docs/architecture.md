@@ -6,7 +6,6 @@ This document maps the repository structure to the architecture diagram (see `Da
 - `SmartCartAIBackend/services/` — Java REST APIs (Inventory, Sales, Demand) that read/write to `database/` tables.
 - `agents/` — Agent code (Decision-Orchestration Agent + Sub-Agents: Feasibility, CostImpact, Explanation, RiskAssessment).
 - `database/` — SQL schema and DB helpers.
-- `infra/` — docker-compose and infra scaffolding for local testing.
 - `docs/` — Architecture docs and diagrams.
 
 ## Next steps ✅
