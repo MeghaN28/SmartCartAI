@@ -1,0 +1,18 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.jar
+*.war
+*.ear
+*.class
+.idea
+*.iml
+.DS_Store
+*.log
+
+# Local config with DB name/password (do not commit)
+application-local.properties
+application-local.yml
+application-local.yaml
+src/main/resources/application.properties
+src/main/resources/application.yml
+src/main/resources/application.yaml

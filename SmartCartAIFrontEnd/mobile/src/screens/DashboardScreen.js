@@ -83,17 +83,16 @@ export default function DashboardScreen() {
     fetch(API.inventory)
       .then((res) => res.json())
       .then((data) => {
-        if (data.success && Array.isArray(data.items)) {
-          const formatted = data.items.map((item) => ({
-            id: item.inventory_id || generateId(),
-            name: item.item_name || 'Unnamed',
-            category: item.item_type || item.category || 'Unknown',
-            quantity: safeNumber(item.current_stock ?? item.initial_stock ?? 0),
-            threshold: safeNumber(item.min_stock ?? item.minimum_required ?? 0),
-            raw: item,
-          }));
-          setInventory(formatted);
-        } else setInventory([]);
+        const rawList = Array.isArray(data) ? data : (data.items || []);
+        const formatted = rawList.map((item, index) => ({
+          id: item.inventoryId || item.itemName || generateId(),
+          name: item.itemName || 'Unnamed',
+          category: item.itemType || item.category || 'Unknown',
+          quantity: safeNumber(item.openingStock ?? item.current_stock ?? item.initial_stock ?? 0),
+          threshold: safeNumber(item.minStock ?? item.min_stock ?? item.minimum_required ?? 0),
+          raw: item,
+        }));
+        setInventory(formatted);
         setLoading(false);
       })
       .catch(() => {

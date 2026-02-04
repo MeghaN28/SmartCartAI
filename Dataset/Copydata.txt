@@ -1,0 +1,44 @@
+\copy inventory(
+    inventory_id,
+    item_name,
+    category,
+    form,
+    usage,
+    item_type,
+    vendor_id,
+    min_stock,
+    max_capacity,
+    opening_stock
+) 
+FROM '/Users/meghanarendrasimha/Documents/SmartCartAI/Dataset/inventory_master_50_unique.csv' 
+WITH (FORMAT csv, HEADER true);
+
+\copy consumption(
+    transaction_id,
+    transaction_date,
+    inventory_id,
+    quantity_consumed,
+    department,
+    staff_id,
+    shift,
+    consumption_reason,
+    remaining_stock,
+    batch_lot
+)
+FROM '/Users/meghanarendrasimha/Documents/SmartCartAI/Dataset/consumption_50.csv'
+WITH (FORMAT csv, HEADER true);
+
+\copy sales(
+    invoice_id,
+    vendor_id,
+    inventory_id,
+    purchase_date,
+    quantity,
+    unit_cost,
+    total_cost,
+    payment_status,
+    account_code,
+    delivery_date
+)
+FROM '/Users/meghanarendrasimha/Documents/SmartCartAI/Dataset/sales_50.csv'
+WITH (FORMAT csv, HEADER true);

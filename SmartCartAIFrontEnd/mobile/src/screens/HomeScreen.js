@@ -31,16 +31,15 @@ export default function HomeScreen() {
     fetch(API.inventory)
       .then((res) => res.json())
       .then((data) => {
-        if (data.success) {
-          const formatted = (data.items || []).map((item) => ({
-            id: item.inventory_id,
-            name: item.item_name,
-            category: item.item_type || 'Unknown',
-            quantity: item.current_stock || 0,
-            threshold: item.min_stock || 0,
-          }));
-          setInventory(formatted);
-        }
+        const rawList = Array.isArray(data) ? data : (data.items || []);
+        const formatted = rawList.map((item, index) => ({
+          id: item.inventoryId || item.itemName || `item-${index}`,
+          name: item.itemName || 'Unnamed',
+          category: item.itemType || item.category || 'Unknown',
+          quantity: item.openingStock ?? item.current_stock ?? 0,
+          threshold: item.minStock ?? item.min_stock ?? 0,
+        }));
+        setInventory(formatted);
         setLoading(false);
       })
       .catch(() => setLoading(false));

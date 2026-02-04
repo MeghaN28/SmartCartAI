@@ -1,4 +1,4 @@
-inventory_id,item_name,category,form,use,item_type,vendor_id,min_stock,max_capacity,opening_stock
+inventory_id,item_name,category,form,usage,item_type,vendor_id,min_stock,max_capacity,opening_stock
 INV0001,Milk 1L,Beverage,Pack,Food,Non-Perishable,V009,39,201,77
 INV0002,Cheddar Cheese,Snack,Pack,Food,Perishable,V004,21,453,160
 INV0003,Yogurt,Bakery,Solid,Food,Perishable,V009,25,339,241

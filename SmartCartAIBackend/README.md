@@ -1,18 +1,53 @@
-## Getting Started
+# SmartCart AI Backend
 
-Welcome to the VS Code Java world. Here is a guideline to help you get started to write Java code in Visual Studio Code.
+Simple Java (Spring Boot) REST API that reads data from PostgreSQL and exposes it via REST endpoints. Swagger UI is included for testing.
 
-## Folder Structure
+## Prerequisites
 
-The workspace contains two folders by default, where:
+- Java 17+
+- Maven
+- PostgreSQL with the SmartCart schema (see `../database/schema.sql` or the schema from Team1_LowCodeAgenthon)
 
-- `src`: the folder to maintain sources
-- `lib`: the folder to maintain dependencies
+## Configuration
 
-Meanwhile, the compiled output files will be generated in the `bin` folder by default.
+Edit `src/main/resources/application.properties`:
 
-> If you want to customize the folder structure, open `.vscode/settings.json` and update the related settings there.
+- `spring.datasource.url` – JDBC URL (default: `jdbc:postgresql://localhost:5432/smartcartai`)
+- `spring.datasource.username` – DB user (default: `postgres`)
+- `spring.datasource.password` – DB password (default: `postgres`)
 
-## Dependency Management
+## Build & Run
 
-The `JAVA PROJECTS` view allows you to manage your dependencies. More details can be found [here](https://github.com/microsoft/vscode-java-dependency#manage-dependencies).
+No need to install Maven—use the included Maven Wrapper:
+
+```bash
+cd SmartCartAIBackend
+./mvnw spring-boot:run
+```
+
+Or build a JAR and run it:
+
+```bash
+./mvnw clean package
+java -jar target/SmartCartAIBackend-1.0.0.jar
+```
+
+(If you have Maven installed, you can use `mvn` instead of `./mvnw`.)
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/inventory` | List all inventory items |
+| GET | `/api/sales` | List all sales |
+| GET | `/api/consumption` | List all consumption records |
+| GET | `/api/demand` | List all demand predictions |
+
+## Swagger UI
+
+After starting the app, open:
+
+- **Swagger UI:** http://localhost:8080/swagger-ui.html  
+- **OpenAPI JSON:** http://localhost:8080/api-docs  
+
+Use Swagger UI to try the endpoints without a separate client.

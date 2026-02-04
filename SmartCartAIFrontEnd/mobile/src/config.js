@@ -6,7 +6,12 @@ const API_BASE = __DEV__ && Platform.OS === 'android'
   : 'http://127.0.0.1:8080';
 
 export const API = {
+  base: API_BASE,
   inventory: `${API_BASE}/api/inventory`,
+  sales: `${API_BASE}/api/sales`,
+  consumption: `${API_BASE}/api/consumption`,
+  demand: `${API_BASE}/api/demand`,
+  all: `${API_BASE}/api/all`,
   reorderLog: `${API_BASE}/api/reorder-log`,
   purchaseUpload: `${API_BASE}/api/purchase/upload_bulk`,
   tts: `${API_BASE}/api/tts`,
