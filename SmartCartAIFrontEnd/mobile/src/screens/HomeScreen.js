@@ -87,7 +87,7 @@ export default function HomeScreen() {
     return (
       <View style={[styles.centered, { backgroundColor: c.bg }]}>
         <ActivityIndicator size="large" color={c.primary} />
-        <Text style={[styles.loadingText, { color: c.textSecondary }]}>Loading inventory...</Text>
+        <Text style={[styles.loadingText, { color: c.textSecondary }]}>Loading inventory…</Text>
       </View>
     );
   }

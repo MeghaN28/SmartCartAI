@@ -49,9 +49,16 @@ export default function ReorderLogScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} />}
     >
       <Text style={[styles.title, { color: c.text }]}>Reorder Log</Text>
+      <Text style={[styles.subtitle, { color: c.textSecondary }]}>
+        History of reorder requests and their status.
+      </Text>
 
       {logs.length === 0 ? (
-        <Text style={[styles.noData, { color: c.textSecondary }]}>No reorder logs found.</Text>
+        <View style={[styles.emptyState, { backgroundColor: c.card, borderColor: c.border }]}>
+          <Text style={styles.emptyIcon}>📋</Text>
+          <Text style={[styles.noData, { color: c.text }]}>No reorder logs yet</Text>
+          <Text style={[styles.noDataSub, { color: c.textSecondary }]}>Logs will appear here when reorders are created.</Text>
+        </View>
       ) : (
         logs.map((log) => (
           <View key={log.log_id} style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
@@ -101,8 +108,17 @@ const styles = StyleSheet.create({
   content: { padding: spacing.lg, paddingBottom: spacing.xl * 3 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: spacing.md },
-  title: { fontSize: 22, fontWeight: '700', marginBottom: spacing.lg },
-  noData: { fontSize: 16 },
+  title: { fontSize: 22, fontWeight: '700', marginBottom: spacing.xs },
+  subtitle: { fontSize: 14, marginBottom: spacing.lg, lineHeight: 20 },
+  emptyState: {
+    padding: spacing.xxl,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  emptyIcon: { fontSize: 48, marginBottom: spacing.md },
+  noData: { fontSize: 17, fontWeight: '600' },
+  noDataSub: { fontSize: 14, marginTop: spacing.xs, textAlign: 'center' },
   card: { padding: spacing.md, borderRadius: radius.md, borderWidth: 1, marginBottom: spacing.md },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
   label: { fontSize: 12 },

@@ -1,0 +1,123 @@
+#!/bin/bash
+
+# SmartCartAI Agents Startup Script
+# This script starts all agents with proper environment variables
+
+# Colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+echo -e "${GREEN}Starting SmartCartAI Agents...${NC}"
+
+# Set Mistral API Key
+export MISTRAL_API_KEY=SWqT1KZpsaFqYIcd6AqFlvQrjK8xFWeC
+export MISTRAL_MODEL=mistral-medium
+
+# Database configuration
+export DB_HOST=localhost
+export DB_PORT=5432
+export DB_NAME=smartcart_ai
+export DB_USER=meghanarendrasimha
+export DB_PASSWORD=Welcome@123
+
+# Agent URLs
+export DECISION_AGENT_URL=http://localhost:9000/orchestrate
+export MONITORING_INTERVAL=30
+
+# Create log directory
+mkdir -p logs
+
+echo -e "${YELLOW}Starting Subagents...${NC}"
+
+# Start Risk Assessment Agent (port 9004)
+cd Agents/decision-orchestration-agent/subagents/risk-assessment
+export PORT=9004
+python3 agent.py > ../../../../logs/risk-assessment.log 2>&1 &
+RISK_PID=$!
+echo -e "${GREEN}Risk Assessment Agent started (PID: $RISK_PID)${NC}"
+cd ../../../../
+
+# Start Feasibility Agent (port 9001)
+cd Agents/decision-orchestration-agent/subagents/feasibility
+export PORT=9001
+python3 agent.py > ../../../../logs/feasibility.log 2>&1 &
+FEASIBILITY_PID=$!
+echo -e "${GREEN}Feasibility Agent started (PID: $FEASIBILITY_PID)${NC}"
+cd ../../../../
+
+# Start Cost Impact Agent (port 9002)
+cd Agents/decision-orchestration-agent/subagents/cost-impact
+export PORT=9002
+python3 agent.py > ../../../../logs/cost-impact.log 2>&1 &
+COST_PID=$!
+echo -e "${GREEN}Cost Impact Agent started (PID: $COST_PID)${NC}"
+cd ../../../../
+
+# Start Explanation Agent (port 9003)
+cd Agents/decision-orchestration-agent/subagents/explanation
+export PORT=9003
+python3 agent.py > ../../../../logs/explanation.log 2>&1 &
+EXPLANATION_PID=$!
+echo -e "${GREEN}Explanation Agent started (PID: $EXPLANATION_PID)${NC}"
+cd ../../../../
+
+# Start Chat Agent (port 9006)
+cd Agents/decision-orchestration-agent/subagents/chat
+export PORT=9006
+export DECISION_ORCHESTRATOR_URL=http://localhost:9000
+python3 agent.py > ../../../../logs/chat-agent.log 2>&1 &
+CHAT_PID=$!
+echo -e "${GREEN}Chat Agent started (PID: $CHAT_PID) on port 9006${NC}"
+echo -e "${YELLOW}  Chat Agent URL: http://localhost:9006/chat${NC}"
+cd ../../../../
+
+# Wait a moment for subagents to start
+sleep 2
+
+echo -e "${YELLOW}Starting Orchestrator Agent...${NC}"
+# Start Decision Orchestrator Agent (port 9000)
+cd Agents/decision-orchestration-agent
+export PORT=9000
+python3 agent.py > ../../logs/orchestrator.log 2>&1 &
+ORCHESTRATOR_PID=$!
+echo -e "${GREEN}Decision Orchestrator Agent started (PID: $ORCHESTRATOR_PID)${NC}"
+cd ../../
+
+# Wait a moment for orchestrator to start
+sleep 2
+
+echo -e "${YELLOW}Starting Inventory Monitoring Agent...${NC}"
+# Start Inventory Monitoring Agent (port 9005)
+cd Agents/inventory-agent
+export PORT=9005
+python3 agent.py > ../../logs/inventory-agent.log 2>&1 &
+INVENTORY_PID=$!
+echo -e "${GREEN}Inventory Monitoring Agent started (PID: $INVENTORY_PID)${NC}"
+cd ../../
+
+# Save PIDs to file for easy stopping
+echo "$RISK_PID" > logs/risk-assessment.pid
+echo "$FEASIBILITY_PID" > logs/feasibility.pid
+echo "$COST_PID" > logs/cost-impact.pid
+echo "$EXPLANATION_PID" > logs/explanation.pid
+echo "$CHAT_PID" > logs/chat-agent.pid
+echo "$ORCHESTRATOR_PID" > logs/orchestrator.pid
+echo "$INVENTORY_PID" > logs/inventory-agent.pid
+
+echo ""
+echo -e "${GREEN}All agents started successfully!${NC}"
+echo ""
+echo "Agent Status:"
+echo "  - Risk Assessment:     http://localhost:9004/health"
+echo "  - Feasibility:         http://localhost:9001/health"
+echo "  - Cost Impact:          http://localhost:9002/health"
+echo "  - Explanation:         http://localhost:9003/health"
+echo "  - Chat Agent:           http://localhost:9006/health"
+echo "  - Decision Orchestrator: http://localhost:9000/health"
+echo "  - Inventory Monitoring:  http://localhost:9005/health"
+echo ""
+echo "Logs are in the 'logs/' directory"
+echo ""
+echo "To stop all agents, run: ./stop_agents.sh"
+echo "Or manually kill processes: pkill -f 'python agent.py'"

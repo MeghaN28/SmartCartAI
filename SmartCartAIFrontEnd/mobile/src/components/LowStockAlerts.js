@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
-import { colors, spacing, radius } from '../theme';
+import { colors, spacing, radius, typography, shadows } from '../theme';
 
 export default function LowStockAlerts({ lowStockAlerts }) {
   const { theme } = useTheme();
@@ -13,17 +13,28 @@ export default function LowStockAlerts({ lowStockAlerts }) {
       {lowStockAlerts && lowStockAlerts.length > 0 ? (
         <View style={styles.grid}>
           {lowStockAlerts.map((item) => (
-            <View key={item.id} style={[styles.card, { backgroundColor: c.card, borderColor: c.warning }]}>
+            <View
+              key={item.id}
+              style={[
+                styles.card,
+                { backgroundColor: c.card, borderLeftColor: c.warning, borderColor: c.border },
+                shadows.sm,
+              ]}
+            >
               <Text style={styles.icon}>⚠️</Text>
-              <Text style={[styles.name, { color: c.text }]}>{item.name}</Text>
-              <Text style={[styles.details, { color: c.textSecondary }]}>
-                Current: {item.quantity} | Threshold: {item.threshold}
-              </Text>
+              <View style={styles.cardContent}>
+                <Text style={[styles.name, { color: c.text }]}>{item.name}</Text>
+                <Text style={[styles.details, { color: c.textSecondary }]}>
+                  Current: {item.quantity} · Min: {item.threshold}
+                </Text>
+              </View>
             </View>
           ))}
         </View>
       ) : (
-        <Text style={[styles.noAlerts, { color: c.textSecondary }]}>No low stock alerts.</Text>
+        <View style={[styles.empty, { backgroundColor: c.card, borderColor: c.border }]}>
+          <Text style={[styles.noAlerts, { color: c.textSecondary }]}>No low stock alerts</Text>
+        </View>
       )}
     </View>
   );
@@ -31,11 +42,24 @@ export default function LowStockAlerts({ lowStockAlerts }) {
 
 const styles = StyleSheet.create({
   section: { marginBottom: spacing.lg },
-  title: { fontSize: 18, fontWeight: '600', marginBottom: spacing.sm },
+  title: { ...typography.subtitle, marginBottom: spacing.sm },
   grid: { gap: spacing.sm },
-  card: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, borderRadius: radius.md, borderWidth: 1 },
-  icon: { fontSize: 20, marginRight: spacing.sm },
-  name: { flex: 1, fontWeight: '600' },
-  details: { fontSize: 12 },
-  noAlerts: { fontSize: 14, fontStyle: 'italic' },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderLeftWidth: 4,
+  },
+  icon: { fontSize: 22, marginRight: spacing.sm },
+  cardContent: { flex: 1 },
+  name: { fontWeight: '600', fontSize: 15 },
+  details: { fontSize: 12, marginTop: 2 },
+  empty: {
+    padding: spacing.lg,
+    borderRadius: radius.md,
+    borderWidth: 1,
+  },
+  noAlerts: { fontSize: 14, fontStyle: 'italic', textAlign: 'center' },
 });

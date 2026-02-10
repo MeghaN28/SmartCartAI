@@ -12,13 +12,17 @@ export default function SearchBar({ searchTerm, setSearchTerm }) {
       <Text style={styles.icon}>🔍</Text>
       <TextInput
         style={[styles.input, { color: c.text }]}
-        placeholder="Search by name, category..."
-        placeholderTextColor={c.textSecondary}
+        placeholder="Search by name or category..."
+        placeholderTextColor={c.textMuted}
         value={searchTerm}
         onChangeText={setSearchTerm}
       />
       {searchTerm.length > 0 && (
-        <TouchableOpacity onPress={() => setSearchTerm('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity
+          onPress={() => setSearchTerm('')}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          style={styles.clearWrap}
+        >
           <Text style={[styles.clear, { color: c.textSecondary }]}>✕</Text>
         </TouchableOpacity>
       )}
@@ -27,8 +31,16 @@ export default function SearchBar({ searchTerm, setSearchTerm }) {
 }
 
 const styles = StyleSheet.create({
-  wrapper: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, borderRadius: radius.md, borderWidth: 1 },
-  icon: { fontSize: 16, marginRight: spacing.sm },
+  wrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    minHeight: 48,
+  },
+  icon: { fontSize: 18, marginRight: spacing.sm },
   input: { flex: 1, paddingVertical: spacing.md, fontSize: 16 },
-  clear: { fontSize: 18, padding: spacing.xs },
+  clearWrap: { padding: spacing.xs },
+  clear: { fontSize: 18, fontWeight: '600' },
 });

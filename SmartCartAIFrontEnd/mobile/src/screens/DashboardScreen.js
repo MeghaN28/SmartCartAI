@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
-import { colors, spacing } from '../theme';
+import { colors, spacing, radius, typography } from '../theme';
 import { API, IGENTIC } from '../config';
 import StatsGrid from '../components/StatsGrid';
 import ChartsSection from '../components/ChartsSection';
@@ -192,42 +192,63 @@ export default function DashboardScreen() {
     setShowModal(false);
     setParsedData(null);
 
+    // Use Decision Orchestrator Agent via backend API
     const payload = {
-      UserInput: JSON.stringify({
-        item_id: item.id,
+      inventory_id: item.id || item.inventory_id || `INV-${item.name?.replace(/\s+/g, '-').toUpperCase()}`,
+      event_type: item.quantity <= item.threshold ? 'low_stock' : 'monitoring',
+      remaining_stock: item.quantity || 0,
+      suggested_action: item.quantity <= item.threshold ? 'reorder' : 'none',
+      stock_signal: item.quantity === 0 ? 'critical' : item.quantity <= item.threshold ? 'low' : 'normal',
+      consumption_signal: 'normal',
+      item_data: {
         item_name: item.name,
-        forecast_output: [],
-        threshold_status: {
-          flag_below_min: item.quantity <= item.threshold,
-          reorder_level: item.threshold,
-          reason: item.quantity <= item.threshold ? 'Below minimum' : 'Stock OK',
-        },
-        stock_info: {
-          Closing_Stock: item.quantity,
-          Min_Stock_Limit: item.threshold,
-          Vendor: { vendor_name: (item.raw && item.raw.vendor_name) || 'Vendor_ABC' },
-        },
-        prompt: `Generate a detailed forecast report for ${item.name}.`,
-      }),
-      sessionId: '',
-      executionId: generateId(),
-      connectionID: 'react-native-frontend',
-      isImage: false,
-      base64string: '',
-      evalId: '',
-      userInputType: '',
+        category: item.category,
+        min_stock: item.threshold,
+        max_capacity: item.maxCapacity || 1000,
+        vendor_id: item.vendorId || item.raw?.vendor_id,
+      },
+      context: {
+        threshold: item.threshold,
+        current_quantity: item.quantity,
+      },
     };
 
     try {
-      const url = `${IGENTIC.endpointBase}/${IGENTIC.agentIdOrchestrator}`;
-      const res = await fetch(url, { method: 'POST', headers: IGENTIC.headers, body: JSON.stringify(payload) });
-      if (!res.ok) throw new Error(`API ${res.status}`);
+      const res = await fetch(API.agents.orchestrate, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `API ${res.status}`);
+      }
+      
       const data = await res.json();
-      const parsed = parseAgentResponse(data.result || '', item);
+      const recommendation = data.recommendation || {};
+      const explanation = data.explanation || {};
+      
+      // Parse response for display
+      const parsed = {
+        currentStock: item.quantity,
+        reorderLevel: item.threshold,
+        lowStock: item.quantity <= item.threshold,
+        recommendation: recommendation.action || 'none',
+        priority: recommendation.priority || 'Medium',
+        reasoning: recommendation.reasoning || explanation.explanation || 'No explanation available',
+        expectedOutcome: recommendation.expected_outcome || '',
+        riskAssessment: data.risk_assessment || {},
+        feasibility: data.feasibility_check || {},
+        costImpact: data.cost_impact || {},
+        actions: recommendation.action === 'reorder' ? ['Reorder Item'] : [],
+      };
+      
       setParsedData(parsed);
       setShowModal(true);
     } catch (err) {
       setAgentError(err.message || String(err));
+      console.error('Agent error:', err);
     } finally {
       setAgentLoading(false);
     }
@@ -263,7 +284,7 @@ export default function DashboardScreen() {
           <TextInput
             style={[styles.searchInput, { color: c.text, backgroundColor: c.card, borderColor: c.border }]}
             placeholder="Search item..."
-            placeholderTextColor={c.textSecondary}
+            placeholderTextColor={c.textMuted}
             value={selectedItemSearch}
             onChangeText={setSelectedItemSearch}
           />
@@ -274,6 +295,7 @@ export default function DashboardScreen() {
               else Alert.alert('Info', 'No item selected or available.');
             }}
             disabled={agentLoading}
+            activeOpacity={0.85}
           >
             <Text style={styles.agentBtnText}>{agentLoading ? '...' : 'Send to Agent'}</Text>
           </TouchableOpacity>
@@ -290,6 +312,7 @@ export default function DashboardScreen() {
           <TouchableOpacity
             style={[styles.addBtn, { backgroundColor: showAddForm ? c.textSecondary : c.primary }]}
             onPress={() => setShowAddForm(!showAddForm)}
+            activeOpacity={0.85}
           >
             <Text style={styles.addBtnText}>{showAddForm ? 'Cancel' : '+ Add Item'}</Text>
           </TouchableOpacity>
@@ -367,19 +390,19 @@ const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: spacing.md },
   header: { marginBottom: spacing.lg },
-  pageTitle: { fontSize: 22, fontWeight: '700', marginBottom: spacing.sm },
+  pageTitle: { ...typography.title, marginBottom: spacing.sm },
   searchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  searchInput: { flex: 1, padding: spacing.md, borderRadius: 8, borderWidth: 1 },
-  agentBtn: { paddingVertical: spacing.md, paddingHorizontal: spacing.lg, borderRadius: 8 },
-  agentBtnText: { color: '#fff', fontWeight: '600' },
+  searchInput: { flex: 1, padding: spacing.md, borderRadius: radius.md, borderWidth: 1 },
+  agentBtn: { paddingVertical: spacing.md, paddingHorizontal: spacing.lg, borderRadius: radius.md },
+  agentBtnText: { color: '#fff', fontWeight: '700' },
   section: { marginTop: spacing.lg },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.md },
-  sectionTitle: { fontSize: 18, fontWeight: '600' },
-  addBtn: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: 8 },
+  sectionTitle: { ...typography.subtitle },
+  addBtn: { paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.md, borderRadius: radius.md },
   addBtnText: { color: '#fff', fontWeight: '600' },
   pagination: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.md, marginTop: spacing.lg },
-  pageBtn: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: 8 },
+  pageBtn: { paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.md, borderRadius: radius.md },
   pageNum: { fontWeight: '600' },
-  errorWrap: { padding: spacing.md, borderRadius: 8, marginTop: spacing.md },
+  errorWrap: { padding: spacing.md, borderRadius: radius.md, marginTop: spacing.md },
   errorText: { fontSize: 14 },
 });

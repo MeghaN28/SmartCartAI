@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
-import { colors, spacing, radius } from '../theme';
+import { colors, spacing, radius, typography, shadows } from '../theme';
 
 export default function HeroSection({ stats }) {
   const navigation = useNavigation();
@@ -10,12 +10,12 @@ export default function HeroSection({ stats }) {
   const c = colors[theme] || colors.dark;
 
   return (
-    <View style={[styles.hero, { backgroundColor: c.card, borderColor: c.border }]}>
-      <View style={styles.badge}>
-        <Text style={[styles.badgeText, { color: c.primary }]}>AI-Powered Inventory Management</Text>
+    <View style={[styles.hero, { backgroundColor: c.card, borderColor: c.border }, shadows.md]}>
+      <View style={[styles.badge, { backgroundColor: c.primary + '20' }]}>
+        <Text style={[styles.badgeText, { color: c.primary }]}>AI-Powered Inventory</Text>
       </View>
       <Text style={[styles.desc, { color: c.textSecondary }]}>
-        Intelligent inventory management with real-time tracking and AI insights.
+        Real-time tracking and AI insights for smarter stock management.
       </Text>
       <View style={styles.statsRow}>
         <View style={styles.stat}>
@@ -36,10 +36,18 @@ export default function HeroSection({ stats }) {
         </View>
       </View>
       <View style={styles.buttons}>
-        <TouchableOpacity style={[styles.btnPrimary, { backgroundColor: c.primary }]} onPress={() => navigation.navigate('Chatbot')}>
+        <TouchableOpacity
+          style={[styles.btnPrimary, { backgroundColor: c.primary }]}
+          onPress={() => navigation.navigate('Chatbot')}
+          activeOpacity={0.85}
+        >
           <Text style={styles.btnText}>Ask AI</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.btnSecondary, { borderColor: c.border }]} onPress={() => navigation.navigate('Dashboard')}>
+        <TouchableOpacity
+          style={[styles.btnSecondary, { backgroundColor: c.cardElevated, borderColor: c.border }]}
+          onPress={() => navigation.navigate('Dashboard')}
+          activeOpacity={0.85}
+        >
           <Text style={[styles.btnTextSecondary, { color: c.text }]}>Dashboard</Text>
         </TouchableOpacity>
       </View>
@@ -48,17 +56,40 @@ export default function HeroSection({ stats }) {
 }
 
 const styles = StyleSheet.create({
-  hero: { padding: spacing.lg, borderRadius: radius.lg, borderWidth: 1, marginBottom: spacing.lg },
-  badge: { marginBottom: spacing.sm },
-  badgeText: { fontSize: 12, fontWeight: '600', letterSpacing: 0.5 },
-  desc: { fontSize: 14, lineHeight: 20, marginBottom: spacing.md },
+  hero: {
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    marginBottom: spacing.lg,
+    overflow: 'hidden',
+  },
+  badge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
+    marginBottom: spacing.sm,
+  },
+  badgeText: { fontSize: 12, fontWeight: '700', letterSpacing: 0.4 },
+  desc: { fontSize: 14, lineHeight: 22, marginBottom: spacing.lg },
   statsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.lg },
   stat: { alignItems: 'center' },
-  statNum: { fontSize: 20, fontWeight: '700' },
-  statLabel: { fontSize: 11, marginTop: 2 },
+  statNum: { ...typography.titleSmall, fontSize: 22 },
+  statLabel: { fontSize: 11, marginTop: 2, fontWeight: '500' },
   buttons: { flexDirection: 'row', gap: spacing.sm },
-  btnPrimary: { flex: 1, paddingVertical: spacing.md, borderRadius: radius.md, alignItems: 'center' },
-  btnSecondary: { flex: 1, paddingVertical: spacing.md, borderRadius: radius.md, alignItems: 'center', borderWidth: 1 },
-  btnText: { color: '#fff', fontWeight: '600' },
-  btnTextSecondary: { fontWeight: '600' },
+  btnPrimary: {
+    flex: 1,
+    paddingVertical: spacing.md + 2,
+    borderRadius: radius.md,
+    alignItems: 'center',
+  },
+  btnSecondary: {
+    flex: 1,
+    paddingVertical: spacing.md + 2,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  btnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  btnTextSecondary: { fontWeight: '600', fontSize: 15 },
 });

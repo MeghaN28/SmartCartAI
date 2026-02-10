@@ -71,3 +71,7 @@ CREATE TABLE demand (
 
 -- Note: for local development you can run (client-side) \copy relative to your current directory:
 -- \copy inventory FROM 'Dataset/inventory_master_50_unique.csv' CSV HEADER;
+
+-- Suggestions table for AI-generated recommendations
+-- Run this separately: \i database/suggestions_table.sql
+-- Or copy the contents of suggestions_table.sql here

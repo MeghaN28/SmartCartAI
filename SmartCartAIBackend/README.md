@@ -10,11 +10,13 @@ Simple Java (Spring Boot) REST API that reads data from PostgreSQL and exposes i
 
 ## Configuration
 
-Edit `src/main/resources/application.properties`:
+The `src/main/resources/application.properties` file is already configured with:
 
-- `spring.datasource.url` – JDBC URL (default: `jdbc:postgresql://localhost:5432/smartcartai`)
-- `spring.datasource.username` – DB user (default: `postgres`)
-- `spring.datasource.password` – DB password (default: `postgres`)
+- `spring.datasource.url` – JDBC URL: `jdbc:postgresql://localhost:5432/smartcart_ai`
+- `spring.datasource.username` – DB user: `meghanarendrasimha`
+- `spring.datasource.password` – DB password: `Welcome@123`
+
+If you need to change these, edit `src/main/resources/application.properties`.
 
 ## Build & Run
 

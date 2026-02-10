@@ -64,19 +64,23 @@ export default function UploadPurchaseScreen() {
       }
       setUploadedFiles(data.files || []);
 
-      const promptPayload = {
-        UserInput: `Process uploaded purchase receipts. Extract item names and quantities; use Inventory & Demand MCP tools to update inventory_master and consumption. Return a summary per receipt.`,
-        base64string: '',
-        additionalData: { receipts_path: '/home/meghanarendrasimha/Documents/receipts' },
-      };
-
-      const agentRes = await fetch(`${IGENTIC.endpointBase}/${IGENTIC.agentIdUpload}`, {
-        method: 'POST',
-        headers: IGENTIC.headers,
-        body: JSON.stringify(promptPayload),
-      });
-      const agentData = await agentRes.json();
-      setAgentResponse(agentData);
+      // Placeholder: iGentic not in use. Configure IGENTIC in config.js to enable receipt processing agent.
+      if (IGENTIC?.endpointBase && IGENTIC?.agentIdUpload) {
+        const promptPayload = {
+          UserInput: `Process uploaded purchase receipts. Extract item names and quantities; use Inventory & Demand MCP tools to update inventory_master and consumption. Return a summary per receipt.`,
+          base64string: '',
+          additionalData: { receipts_path: '/home/meghanarendrasimha/Documents/receipts' },
+        };
+        const agentRes = await fetch(`${IGENTIC.endpointBase}/${IGENTIC.agentIdUpload}`, {
+          method: 'POST',
+          headers: IGENTIC.headers,
+          body: JSON.stringify(promptPayload),
+        });
+        const agentData = await agentRes.json();
+        setAgentResponse(agentData);
+      } else {
+        setAgentResponse({ result: 'Receipt processing agent not configured. Add iGentic in config.js for AI processing.' });
+      }
     } catch (err) {
       setError(err.message || 'Upload failed');
     } finally {
@@ -89,8 +93,15 @@ export default function UploadPurchaseScreen() {
   return (
     <ScrollView style={[styles.container, { backgroundColor: c.bg }]} contentContainerStyle={styles.content}>
       <Text style={[styles.title, { color: c.text }]}>Upload Purchase Receipts</Text>
+      <Text style={[styles.subtitle, { color: c.textSecondary }]}>
+        Select receipt images or PDFs to process and update inventory.
+      </Text>
 
-      <TouchableOpacity style={[styles.pickBtn, { backgroundColor: c.card, borderColor: c.border }]} onPress={pickFiles}>
+      <TouchableOpacity
+        style={[styles.pickBtn, { backgroundColor: c.card, borderColor: c.border }]}
+        onPress={pickFiles}
+        activeOpacity={0.85}
+      >
         <Text style={[styles.pickBtnText, { color: c.primary }]}>Choose files (images/PDF)</Text>
       </TouchableOpacity>
 
@@ -163,7 +174,8 @@ export default function UploadPurchaseScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: spacing.lg, paddingBottom: spacing.xl * 3 },
-  title: { fontSize: 20, fontWeight: '700', marginBottom: spacing.lg },
+  title: { fontSize: 22, fontWeight: '700', marginBottom: spacing.xs },
+  subtitle: { fontSize: 14, marginBottom: spacing.lg, lineHeight: 20 },
   pickBtn: { padding: spacing.lg, borderRadius: radius.md, borderWidth: 1, marginBottom: spacing.md },
   pickBtnText: { fontSize: 16, fontWeight: '600' },
   filesBox: { padding: spacing.md, borderRadius: radius.md, borderWidth: 1, marginBottom: spacing.md },

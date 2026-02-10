@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { colors, spacing } from '../theme';
-import { IGENTIC } from '../config';
+import { API } from '../config';
 import WelcomeScreen from '../components/WelcomeScreen';
 import MessageList from '../components/MessageList';
 import ChatInput from '../components/ChatInput';
@@ -18,7 +18,7 @@ export default function ChatbotScreen() {
   const [messages, setMessages] = useState([
     {
       id: generateId(),
-      text: "Hello! I'm your SmartCartAI assistant. Ask me about stock levels, item details, or search for specific items.",
+      text: "Hello! I'm your SmartCartAI assistant. I can analyze your inventory, check stock levels, and generate suggestions. Try asking: 'Check inventory and suggest actions' or 'What items need reordering?'",
       sender: 'bot',
       timestamp: new Date(),
     },
@@ -27,6 +27,7 @@ export default function ChatbotScreen() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [agentError, setAgentError] = useState(null);
   const [mode, setMode] = useState('text');
+  const [sessionId] = useState(() => generateId()); // Persistent session ID
 
   const sendToAgent = async (text) => {
     if (!text?.trim()) return;
@@ -36,34 +37,40 @@ export default function ChatbotScreen() {
     setMessages((prev) => [...prev, { id: generateId(), text, sender: 'user', timestamp: new Date() }]);
 
     const payload = {
-      UserInput: text,
-      sessionId: generateId(),
-      executionId: generateId(),
-      connectionID: 'react-native-chatbot',
-      isImage: false,
-      base64string: '',
-      evalId: '',
-      userInputType: 'text',
+      query: text,
+      session_id: sessionId,
     };
 
     try {
-      const url = `${IGENTIC.endpointBase}/${IGENTIC.agentIdChat}`;
-      const res = await fetch(url, {
+      const res = await fetch(API.agents.chat, {
         method: 'POST',
-        headers: IGENTIC.headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error(`Agent error: ${res.status}`);
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Server error: ${res.status}`);
+      }
 
       const data = await res.json();
-      const botMessageText = data.result || 'No response from agent.';
+      let botMessageText = data.answer || data.error || 'No response from agent.';
+      
+      // Add suggestion count info if suggestions were generated
+      if (data.suggestions_count > 0) {
+        botMessageText += `\n\n💡 ${data.suggestions_count} suggestion(s) have been saved. Check the Suggestions tab to view them.`;
+      }
 
       setMessages((prev) => [...prev, { id: generateId(), text: botMessageText, sender: 'bot', timestamp: new Date() }]);
     } catch (err) {
       setAgentError(err.message);
+      const errorMessage = err.message.includes('fetch') 
+        ? 'Unable to connect to the chat service. Please make sure the backend and chat agent are running.'
+        : `Error: ${err.message}`;
+      
       setMessages((prev) => [
         ...prev,
-        { id: generateId(), text: `Error: ${err.message}`, sender: 'bot', timestamp: new Date() },
+        { id: generateId(), text: errorMessage, sender: 'bot', timestamp: new Date() },
       ]);
     }
     setIsProcessing(false);
@@ -77,10 +84,10 @@ export default function ChatbotScreen() {
   };
 
   const quickQuestions = [
-    'What items are low in stock?',
-    'Show me all pain relief items',
-    'How many items are out of stock?',
-    "What's the total inventory count?",
+    'Check inventory and suggest actions',
+    'What items need reordering?',
+    'Analyze low stock items',
+    'Generate suggestions for inventory',
   ];
 
   const handleQuickQuestion = (q) => {
