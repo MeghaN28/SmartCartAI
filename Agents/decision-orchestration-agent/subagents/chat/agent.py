@@ -1,7 +1,7 @@
 """Chat Agent – Orchestrator that handles conversational queries, checks inventory, calls decision agent, and stores suggestions."""
 import os
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 from datetime import datetime
 
@@ -108,18 +108,22 @@ def get_items_needing_attention(query: str) -> List[Dict]:
         return []
 
 
-def get_consumption_history(inventory_id: str) -> List[Dict]:
-    """Get consumption history for an item."""
+# Demand forecast: past 1 week → next 1 week
+FORECAST_PAST_DAYS = 7
+FORECAST_NEXT_WEEK_DAYS = 7
+
+
+def get_consumption_history(inventory_id: str, last_n_days: int = FORECAST_PAST_DAYS) -> List[Dict]:
+    """Get consumption history for an item (default: past 1 week for demand forecast)."""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("""
-            SELECT date, quantity_consumed, remaining_stock, department, consumption_reason
+            SELECT transaction_date as date, quantity_consumed, remaining_stock, department, consumption_reason
             FROM consumption
-            WHERE inventory_id = %s
-            ORDER BY date DESC
-            LIMIT 30
-        """, (inventory_id,))
+            WHERE inventory_id = %s AND transaction_date >= CURRENT_DATE - INTERVAL '1 day' * %s
+            ORDER BY transaction_date DESC
+        """, (inventory_id, last_n_days))
         history = [dict(row) for row in cur.fetchall()]
         cur.close()
         conn.close()
@@ -130,17 +134,21 @@ def get_consumption_history(inventory_id: str) -> List[Dict]:
 
 
 def calculate_forecasted_demand(consumption_history: List[Dict]) -> float:
-    """Calculate forecasted demand using simple moving average."""
+    """Forecast demand for the next 1 week: daily rate from past 1 week of consumption (total / 7 days)."""
     if not consumption_history:
         return 0.0
-    consumptions = [float(h.get('quantity_consumed', 0)) for h in consumption_history[:7] if h.get('quantity_consumed')]
-    if not consumptions:
+    total_consumed = sum(float(h.get('quantity_consumed', 0) or 0) for h in consumption_history)
+    if total_consumed <= 0:
         return 0.0
-    return sum(consumptions) / len(consumptions)
+    # Past N days → daily rate = total / N (forecast for next week uses this daily rate)
+    n_days = min(len(consumption_history), FORECAST_PAST_DAYS)
+    if n_days == 0:
+        return 0.0
+    return total_consumed / FORECAST_PAST_DAYS
 
 
-def call_decision_orchestrator(item: Dict) -> Optional[Dict]:
-    """Call the Decision Orchestrator Agent for an item."""
+def call_decision_orchestrator(item: Dict) -> Tuple[Optional[Dict], Optional[str]]:
+    """Call the Decision Orchestrator Agent for an item. Returns (response_json, error_message)."""
     try:
         consumption_history = get_consumption_history(item['inventory_id'])
         forecasted_demand = calculate_forecasted_demand(consumption_history)
@@ -175,15 +183,30 @@ def call_decision_orchestrator(item: Dict) -> Optional[Dict]:
             "context": {},
         }
         
-        response = requests.post(f"{DECISION_ORCHESTRATOR_URL}/orchestrate", json=payload, timeout=10)
+        response = requests.post(f"{DECISION_ORCHESTRATOR_URL}/orchestrate", json=payload, timeout=15)
         if response.ok:
-            return response.json()
-        else:
-            logger.error(f"Decision orchestrator returned {response.status_code}")
-            return None
+            return response.json(), None
+        err_msg = f"Recommendation service returned {response.status_code}"
+        try:
+            body = response.text[:200] if response.text else ""
+            if body:
+                err_msg += f": {body}"
+        except Exception:
+            pass
+        logger.error(f"Decision orchestrator: {err_msg}")
+        return None, err_msg
+    except requests.exceptions.ConnectionError as e:
+        err_msg = "Recommendation service is not reachable. Is the Decision Orchestrator running?"
+        logger.error(f"Decision orchestrator connection failed: {e}")
+        return None, err_msg
+    except requests.exceptions.Timeout as e:
+        err_msg = "Recommendation service timed out."
+        logger.error(f"Decision orchestrator timeout: {e}")
+        return None, err_msg
     except Exception as e:
+        err_msg = str(e)[:150]
         logger.error(f"Error calling decision orchestrator: {e}")
-        return None
+        return None, err_msg
 
 
 def save_suggestion(user_query: str, item: Dict, recommendation: Dict) -> Optional[int]:
@@ -256,11 +279,16 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
     if should_generate_suggestions and items:
         answer_parts.append(f"I've analyzed your inventory and found {len(items)} item(s) that need attention.")
         answer_parts.append("Here are my recommendations:\n")
-        
+        errors = []
+
         # Process each item through decision orchestrator
         for item in items[:10]:  # Limit to 10 items
             try:
-                recommendation = call_decision_orchestrator(item)
+                recommendation, err = call_decision_orchestrator(item)
+                if err:
+                    errors.append(f"{item.get('item_name', item.get('inventory_id', '?'))}: {err}")
+                    answer_parts.append(f"• {item.get('item_name', 'Item')}: Could not get recommendation — {err}")
+                    continue
                 if recommendation:
                     # Save suggestion to database
                     suggestion_id = save_suggestion(query, item, recommendation)
@@ -271,19 +299,26 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                             "priority": recommendation.get('recommendation', {}).get('priority', 'Medium'),
                             "suggestion_id": suggestion_id
                         })
-                        
                         rec = recommendation.get('recommendation', {})
                         answer_parts.append(
                             f"• {item['item_name']}: {rec.get('action', 'none').upper()} "
                             f"({rec.get('priority', 'Medium')} priority) - {rec.get('reasoning', '')[:100]}"
                         )
+                    else:
+                        errors.append(f"{item.get('item_name')}: Failed to save suggestion to database.")
+                else:
+                    errors.append(f"{item.get('item_name')}: No recommendation returned.")
             except Exception as e:
                 logger.error(f"Error processing item {item.get('inventory_id')}: {e}")
-        
+                errors.append(f"{item.get('item_name', 'Item')}: {str(e)[:80]}")
+                answer_parts.append(f"• {item.get('item_name', 'Item')}: Error — {str(e)[:80]}")
+
         if suggestions_generated:
             answer_parts.append(f"\n✅ Generated {len(suggestions_generated)} suggestion(s). Check the Suggestion Log to see all details.")
+        elif errors:
+            answer_parts.append("\n⚠️ No suggestions could be saved. Common causes: Decision Orchestrator not running (start it on port 9000), or subagents (risk, feasibility, cost, explanation) not running. Check server logs for details.")
         else:
-            answer_parts.append("\nNo suggestions were generated. All items appear to be in good standing.")
+            answer_parts.append("\nNo suggestions were generated for these items.")
     
     else:
         # Regular Q&A mode - just answer the question

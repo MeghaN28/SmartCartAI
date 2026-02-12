@@ -110,6 +110,92 @@ def get_db_connection():
     )
 
 
+def _cosine_sim(a: List[float], b: List[float]) -> float:
+    """Cosine similarity between two embedding vectors (pure Python, no numpy)."""
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(x * x for x in b) ** 0.5
+    if na == 0 or nb == 0:
+        return 0.0
+    return dot / (na * nb)
+
+
+def retrieve_similar_items_by_embedding(inventory_id: str, limit: int = 5) -> List[Dict]:
+    """Retrieve inventory items most similar by embedding; include past suggestions for evidence."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT embedding FROM inventory WHERE inventory_id = %s AND embedding IS NOT NULL",
+            (inventory_id,),
+        )
+        row = cur.fetchone()
+        if not row or not row.get("embedding"):
+            cur.close()
+            conn.close()
+            return []
+        current_embedding = list(row["embedding"]) if row["embedding"] else []
+
+        cur.execute(
+            """
+            SELECT inventory_id, item_name, embedding, min_stock, opening_stock, category
+            FROM inventory
+            WHERE embedding IS NOT NULL AND inventory_id != %s
+            """,
+            (inventory_id,),
+        )
+        others = [dict(r) for r in cur.fetchall()]
+        cur.close()
+        conn.close()
+
+        scored = []
+        for r in others:
+            emb = r.get("embedding")
+            if emb is None:
+                continue
+            emb_list = list(emb) if hasattr(emb, "__iter__") and not isinstance(emb, str) else emb
+            sim = _cosine_sim(current_embedding, emb_list)
+            scored.append(({**r, "similarity": round(sim, 4)}, sim))
+        scored.sort(key=lambda x: -x[1])
+        top = [x[0] for x in scored[:limit]]
+
+        if not top:
+            return []
+
+        # Fetch past suggestions for similar items (evidence for recommendation)
+        conn = get_db_connection()
+        cur = conn.cursor()
+        ids = [t["inventory_id"] for t in top]
+        placeholders = ",".join(["%s"] * len(ids))
+        cur.execute(
+            f"""
+            SELECT inventory_id, action, priority, reasoning, expected_outcome, created_at
+            FROM suggestions
+            WHERE inventory_id IN ({placeholders})
+            ORDER BY created_at DESC
+            """,
+            tuple(ids),
+        )
+        suggestions_by_id = {}
+        for r in cur.fetchall():
+            d = dict(r)
+            inv_id = d.pop("inventory_id")
+            if inv_id not in suggestions_by_id:
+                suggestions_by_id[inv_id] = []
+            suggestions_by_id[inv_id].append(d)
+        cur.close()
+        conn.close()
+
+        for t in top:
+            t["past_suggestions"] = suggestions_by_id.get(t["inventory_id"], [])[:3]
+        return top
+    except Exception as e:
+        logger.error(f"Error retrieving similar items by embedding: {e}")
+        return []
+
+
 def retrieve_historical_context(inventory_id: str) -> Dict:
     """Retrieve historical inventory and consumption data for RAG."""
     try:
@@ -123,10 +209,10 @@ def retrieve_historical_context(inventory_id: str) -> Dict:
         # Get recent consumption
         cur.execute(
             """
-            SELECT date, quantity_consumed, remaining_stock, department, consumption_reason
+            SELECT transaction_date as date, quantity_consumed, remaining_stock, department, consumption_reason
             FROM consumption
             WHERE inventory_id = %s
-            ORDER BY date DESC
+            ORDER BY transaction_date DESC
             LIMIT 20
             """,
             (inventory_id,)
@@ -248,10 +334,28 @@ def generate_explanation(state: DecisionOrchestratorState) -> dict:
 
 
 def synthesize_recommendation(state: DecisionOrchestratorState) -> dict:
-    """Synthesize final recommendation using LLM and RAG context."""
-    # Retrieve historical context for RAG
-    historical_context = retrieve_historical_context(state.get("inventory_id", ""))
-    
+    """Synthesize final recommendation using LLM, RAG context, and embedding-based similar items."""
+    inventory_id = state.get("inventory_id", "")
+    historical_context = retrieve_historical_context(inventory_id)
+    similar_items = retrieve_similar_items_by_embedding(inventory_id, limit=5)
+
+    # Format similar-items evidence (embedding-based)
+    similar_text = "None available."
+    if similar_items:
+        lines = []
+        for s in similar_items:
+            name = s.get("item_name", "?")
+            sim = s.get("similarity", 0)
+            stock = s.get("opening_stock")
+            min_s = s.get("min_stock")
+            past = s.get("past_suggestions", [])
+            past_str = "; ".join(
+                f"{p.get('action', '')}({p.get('priority', '')}): {(p.get('reasoning') or '')[:60]}..."
+                for p in past[:2]
+            ) if past else "no past suggestions"
+            lines.append(f"  - {name} (similarity {sim}, stock {stock}/min {min_s}): {past_str}")
+        similar_text = "\n".join(lines) if lines else "None available."
+
     # Prepare context for LLM
     context_text = f"""
 Inventory Item: {state.get('item_data', {}).get('item_name', 'Unknown')}
@@ -267,25 +371,32 @@ Cost Impact: {state.get('cost_impact', {})}
 
 Historical Consumption (last 5): {historical_context['consumption'][:5]}
 Recent Sales (last 3): {historical_context['sales'][:3]}
+
+Similar items (embedding-based) and their past recommendations (use as evidence):
+{similar_text}
 """
     
     if llm:
         try:
             prompt = ChatPromptTemplate.from_messages([
-                ("system", """You are an expert inventory management advisor. Based on the provided context,
-analyze the situation and provide a prescriptive recommendation. Consider:
-1. Risk factors and their severity
-2. Operational feasibility
-3. Cost implications
-4. Historical patterns
+                ("system", """You are an expert inventory management advisor. Your job is to give a strong, prescriptive recommendation that is evidence-based and actionable.
+
+Use ALL of the following:
+1. Risk factors and their severity — weigh them explicitly.
+2. Operational feasibility and constraints.
+3. Cost implications and budget fit.
+4. This item's historical consumption and sales.
+5. Similar items (embedding-based): use their past actions and outcomes as evidence. If similar items were reordered with good results, lean toward reorder; if they were held or had issues, factor that in.
+
+Be specific and prescriptive. Do not hedge. Choose one clear action and justify it in 1–2 sentences.
 
 Provide a structured recommendation with:
-- action: The recommended action (reorder, hold, transfer, none)
-- priority: High, Medium, or Low
-- reasoning: Brief explanation
-- expected_outcome: What will happen if this action is taken
+- action: Exactly one of: reorder, hold, transfer, none
+- priority: High, Medium, or Low (High if stock is critical or risk is high; Low if holding is safe)
+- reasoning: 1–2 clear sentences citing risk, feasibility, cost, and (when relevant) similar-item evidence
+- expected_outcome: One concrete sentence on what will happen if this action is taken (e.g. "Stock will reach safe level within 2 weeks" or "Stockout risk will remain until next cycle")
 """),
-                ("user", "Context:\n{context}\n\nProvide a prescriptive recommendation."),
+                ("user", "Context:\n{context}\n\nProvide a single, strong prescriptive recommendation as JSON."),
             ])
             
             chain = prompt | llm | JsonOutputParser()

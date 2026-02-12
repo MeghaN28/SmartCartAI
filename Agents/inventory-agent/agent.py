@@ -118,10 +118,10 @@ def fetch_consumption_history(inventory_id: str, days: int = 30) -> List[dict]:
         cutoff_date = datetime.now() - timedelta(days=days)
         cur.execute(
             """
-            SELECT date, quantity_consumed, remaining_stock, department, consumption_reason
+            SELECT transaction_date as date, quantity_consumed, remaining_stock, department, consumption_reason
             FROM consumption
-            WHERE inventory_id = %s AND date >= %s
-            ORDER BY date DESC
+            WHERE inventory_id = %s AND transaction_date >= %s
+            ORDER BY transaction_date DESC
             """,
             (inventory_id, cutoff_date)
         )
@@ -160,7 +160,7 @@ def calculate_current_stock(inventory_id: str) -> Optional[int]:
         
         # Get latest remaining stock from consumption table if available
         cur.execute(
-            "SELECT remaining_stock FROM consumption WHERE inventory_id = %s ORDER BY date DESC LIMIT 1",
+            "SELECT remaining_stock FROM consumption WHERE inventory_id = %s ORDER BY transaction_date DESC LIMIT 1",
             (inventory_id,)
         )
         latest_row = cur.fetchone()
@@ -178,12 +178,16 @@ def calculate_current_stock(inventory_id: str) -> Optional[int]:
 
 
 # -----------------------------------------------------------------------------
-# Forecasting Functions
+# Forecasting Functions (next 1 week forecast from past 1 week historical data)
 # -----------------------------------------------------------------------------
+
+# Demand forecast: use past 7 days of consumption to forecast for the next 7 days
+FORECAST_PAST_DAYS = 7
+FORECAST_NEXT_WEEK_DAYS = 7
 
 
 def exponential_smoothing(history: List[float], alpha: float = 0.3) -> float:
-    """Exponential smoothing forecast."""
+    """Exponential smoothing forecast (daily rate)."""
     if not history:
         return 0.0
     if len(history) == 1:
@@ -196,34 +200,37 @@ def exponential_smoothing(history: List[float], alpha: float = 0.3) -> float:
 
 
 def moving_average(history: List[float], window: int = 7) -> float:
-    """Moving average forecast."""
+    """Moving average forecast (daily rate); window = past days (e.g. 7 for past week)."""
     if not history:
         return 0.0
-    if len(history) < window:
-        return sum(history) / len(history)
+    window = min(window, len(history))
+    if window <= 0:
+        return 0.0
     return sum(history[-window:]) / window
 
 
 def forecast_demand(consumption_history: List[dict], method: str = "exponential_smoothing") -> float:
-    """Forecast future demand based on consumption history."""
+    """Forecast demand for the next 1 week: expected daily demand rate based on past 1 week of consumption.
+    consumption_history should be the last 7 days. Return value = daily rate; next-week total = rate * 7."""
     if not consumption_history:
         return 0.0
     
-    # Extract consumption values
-    consumptions = [float(row.get('quantity_consumed', 0)) for row in consumption_history if row.get('quantity_consumed')]
+    # Use only the most recent FORECAST_PAST_DAYS days
+    recent = consumption_history[:FORECAST_PAST_DAYS]
+    consumptions = [float(row.get('quantity_consumed', 0)) for row in recent if row.get('quantity_consumed') is not None]
     
     if not consumptions:
         return 0.0
     
-    # Reverse to get chronological order (oldest first)
+    # Reverse to chronological order (oldest first) for exponential smoothing
     consumptions.reverse()
     
     if method == "exponential_smoothing":
         return exponential_smoothing(consumptions)
     elif method == "moving_average":
-        return moving_average(consumptions)
+        return moving_average(consumptions, window=FORECAST_PAST_DAYS)
     else:
-        return moving_average(consumptions)  # Default
+        return moving_average(consumptions, window=FORECAST_PAST_DAYS)
 
 
 # -----------------------------------------------------------------------------
@@ -244,8 +251,8 @@ def receive_event(state: InventoryAgentState) -> dict:
     if remaining is None and inventory_id:
         remaining = calculate_current_stock(inventory_id)
     
-    # Fetch consumption history
-    consumption_history = fetch_consumption_history(inventory_id) if inventory_id else []
+    # Fetch consumption history: past 1 week for demand forecast (next 1 week)
+    consumption_history = fetch_consumption_history(inventory_id, days=FORECAST_PAST_DAYS) if inventory_id else []
     
     is_valid = bool(inventory_id and event_type and remaining is not None and item_data)
     
@@ -436,7 +443,7 @@ def monitor_inventory_continuously():
                     # Check if item needs attention
                     if current_stock < min_stock:
                         # Fetch consumption history
-                        consumption_history = fetch_consumption_history(inventory_id)
+                        consumption_history = fetch_consumption_history(inventory_id, days=FORECAST_PAST_DAYS)
                         
                         # Create event state
                         initial_state: InventoryAgentState = {
@@ -492,8 +499,9 @@ def check_inventory_status(inventory_id: str) -> dict:
         return {"error": f"Inventory item {inventory_id} not found"}
     
     current_stock = calculate_current_stock(inventory_id)
-    consumption_history = fetch_consumption_history(inventory_id)
+    consumption_history = fetch_consumption_history(inventory_id, days=FORECAST_PAST_DAYS)
     forecasted_demand = forecast_demand(consumption_history)
+    forecast_next_week_total = round(forecasted_demand * FORECAST_NEXT_WEEK_DAYS, 2)
     
     return {
         "inventory_id": inventory_id,
@@ -502,6 +510,8 @@ def check_inventory_status(inventory_id: str) -> dict:
         "min_stock": item_data.get("min_stock"),
         "max_capacity": item_data.get("max_capacity"),
         "forecasted_demand": forecasted_demand,
+        "forecast_next_week_total": forecast_next_week_total,
+        "forecast_based_on_past_days": FORECAST_PAST_DAYS,
         "consumption_history_count": len(consumption_history),
     }
 

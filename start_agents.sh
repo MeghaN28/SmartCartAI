@@ -30,10 +30,10 @@ mkdir -p logs
 
 echo -e "${YELLOW}Starting Subagents...${NC}"
 
-# Start Risk Assessment Agent (port 9004)
+# Start Risk Assessment Agent (port 9004) - nohup keeps it running after terminal closes
 cd Agents/decision-orchestration-agent/subagents/risk-assessment
 export PORT=9004
-python3 agent.py > ../../../../logs/risk-assessment.log 2>&1 &
+nohup python3 agent.py >> ../../../../logs/risk-assessment.log 2>&1 &
 RISK_PID=$!
 echo -e "${GREEN}Risk Assessment Agent started (PID: $RISK_PID)${NC}"
 cd ../../../../
@@ -41,7 +41,7 @@ cd ../../../../
 # Start Feasibility Agent (port 9001)
 cd Agents/decision-orchestration-agent/subagents/feasibility
 export PORT=9001
-python3 agent.py > ../../../../logs/feasibility.log 2>&1 &
+nohup python3 agent.py >> ../../../../logs/feasibility.log 2>&1 &
 FEASIBILITY_PID=$!
 echo -e "${GREEN}Feasibility Agent started (PID: $FEASIBILITY_PID)${NC}"
 cd ../../../../
@@ -49,7 +49,7 @@ cd ../../../../
 # Start Cost Impact Agent (port 9002)
 cd Agents/decision-orchestration-agent/subagents/cost-impact
 export PORT=9002
-python3 agent.py > ../../../../logs/cost-impact.log 2>&1 &
+nohup python3 agent.py >> ../../../../logs/cost-impact.log 2>&1 &
 COST_PID=$!
 echo -e "${GREEN}Cost Impact Agent started (PID: $COST_PID)${NC}"
 cd ../../../../
@@ -57,7 +57,7 @@ cd ../../../../
 # Start Explanation Agent (port 9003)
 cd Agents/decision-orchestration-agent/subagents/explanation
 export PORT=9003
-python3 agent.py > ../../../../logs/explanation.log 2>&1 &
+nohup python3 agent.py >> ../../../../logs/explanation.log 2>&1 &
 EXPLANATION_PID=$!
 echo -e "${GREEN}Explanation Agent started (PID: $EXPLANATION_PID)${NC}"
 cd ../../../../
@@ -66,7 +66,7 @@ cd ../../../../
 cd Agents/decision-orchestration-agent/subagents/chat
 export PORT=9006
 export DECISION_ORCHESTRATOR_URL=http://localhost:9000
-python3 agent.py > ../../../../logs/chat-agent.log 2>&1 &
+nohup python3 agent.py >> ../../../../logs/chat-agent.log 2>&1 &
 CHAT_PID=$!
 echo -e "${GREEN}Chat Agent started (PID: $CHAT_PID) on port 9006${NC}"
 echo -e "${YELLOW}  Chat Agent URL: http://localhost:9006/chat${NC}"
@@ -79,7 +79,7 @@ echo -e "${YELLOW}Starting Orchestrator Agent...${NC}"
 # Start Decision Orchestrator Agent (port 9000)
 cd Agents/decision-orchestration-agent
 export PORT=9000
-python3 agent.py > ../../logs/orchestrator.log 2>&1 &
+nohup python3 agent.py >> ../../logs/orchestrator.log 2>&1 &
 ORCHESTRATOR_PID=$!
 echo -e "${GREEN}Decision Orchestrator Agent started (PID: $ORCHESTRATOR_PID)${NC}"
 cd ../../
@@ -91,7 +91,7 @@ echo -e "${YELLOW}Starting Inventory Monitoring Agent...${NC}"
 # Start Inventory Monitoring Agent (port 9005)
 cd Agents/inventory-agent
 export PORT=9005
-python3 agent.py > ../../logs/inventory-agent.log 2>&1 &
+nohup python3 agent.py >> ../../logs/inventory-agent.log 2>&1 &
 INVENTORY_PID=$!
 echo -e "${GREEN}Inventory Monitoring Agent started (PID: $INVENTORY_PID)${NC}"
 cd ../../
@@ -119,5 +119,6 @@ echo "  - Inventory Monitoring:  http://localhost:9005/health"
 echo ""
 echo "Logs are in the 'logs/' directory"
 echo ""
+echo "Agents will keep running even if you close this terminal (started with nohup)."
 echo "To stop all agents, run: ./stop_agents.sh"
 echo "Or manually kill processes: pkill -f 'python agent.py'"

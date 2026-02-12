@@ -165,7 +165,7 @@ def assess_item_risk(inventory_id: str) -> dict:
         
         cur = conn.cursor()
         cur.execute(
-            "SELECT * FROM consumption WHERE inventory_id = %s ORDER BY date DESC LIMIT 30",
+            "SELECT * FROM consumption WHERE inventory_id = %s ORDER BY transaction_date DESC LIMIT 30",
             (inventory_id,)
         )
         consumption_history = [dict(row) for row in cur.fetchall()]
