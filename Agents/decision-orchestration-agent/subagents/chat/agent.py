@@ -60,6 +60,31 @@ def get_db_connection():
     )
 
 
+def get_items_by_name(search: str) -> List[Dict]:
+    """Get inventory items whose name contains the search term (e.g. 'apple')."""
+    if not search or not search.strip():
+        return []
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        pattern = f"%{search.strip()}%"
+        cur.execute("""
+            SELECT inventory_id, item_name, category, opening_stock as remaining_stock,
+                   min_stock, max_capacity, vendor_id
+            FROM inventory
+            WHERE item_name ILIKE %s
+            ORDER BY opening_stock ASC
+            LIMIT 20
+        """, (pattern,))
+        items = [dict(row) for row in cur.fetchall()]
+        cur.close()
+        conn.close()
+        return items
+    except Exception as e:
+        logger.error(f"Error getting items by name: {e}")
+        return []
+
+
 def get_items_needing_attention(query: str) -> List[Dict]:
     """Get inventory items that need attention based on the query."""
     try:
@@ -260,9 +285,31 @@ def save_suggestion(user_query: str, item: Dict, recommendation: Dict) -> Option
         return None
 
 
+def _get_inventory_summary() -> Dict:
+    """Get inventory summary (total items, total stock, low stock count)."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT 
+                COUNT(*) as total_items,
+                COALESCE(SUM(opening_stock), 0) as total_stock,
+                COUNT(CASE WHEN opening_stock <= min_stock THEN 1 END) as low_stock_count
+            FROM inventory
+        """)
+        summary = dict(cur.fetchone())
+        cur.close()
+        conn.close()
+        return summary
+    except Exception as e:
+        logger.error(f"Error getting inventory summary: {e}")
+        return {"total_items": 0, "total_stock": 0, "low_stock_count": 0}
+
+
 def process_chat_query(query: str, session_id: str = None) -> Dict:
     """Process a chat query: check inventory, call decision agent, store suggestions."""
-    query_lower = query.lower()
+    query_lower = query.lower().strip()
+    query_tokens = [t for t in query.split() if t]
     
     # Check if this is a question that should trigger suggestions
     should_generate_suggestions = any(word in query_lower for word in [
@@ -270,8 +317,15 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
         "low stock", "reorder", "need", "help"
     ])
     
-    # Get items that need attention
+    # Get items that need attention (or all items for "check")
     items = get_items_needing_attention(query)
+    
+    # If query looks like an item name (e.g. "apple") and we got no items from the main flow, look up by name
+    if not items and len(query_tokens) <= 3 and query_tokens:
+        items_by_name = get_items_by_name(query.strip())
+        if items_by_name:
+            items = items_by_name
+            should_generate_suggestions = True
     
     suggestions_generated = []
     answer_parts = []
@@ -320,24 +374,24 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
         else:
             answer_parts.append("\nNo suggestions were generated for these items.")
     
+    elif should_generate_suggestions and not items:
+        # User asked to check/suggest but no items found (e.g. no low stock, empty DB, or item name not found)
+        logger.info("Check/suggest requested but no items returned (empty list or DB issue). Showing inventory summary.")
+        summary = _get_inventory_summary()
+        total = summary.get("total_items", 0)
+        low = summary.get("low_stock_count", 0)
+        answer_parts.append("I've checked your inventory.")
+        if total == 0:
+            answer_parts.append("There are no items in your inventory yet.")
+        else:
+            answer_parts.append(f"You have {total} item(s) in inventory. No items currently need attention (low stock count: {low}).")
+        answer_parts.append("Try asking about a specific item by name (e.g. \"apple\") or \"What items need reordering?\" when you have low stock.")
+    
     else:
         # Regular Q&A mode - just answer the question
         if llm:
             try:
-                # Get summary context
-                conn = get_db_connection()
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT 
-                        COUNT(*) as total_items,
-                        SUM(opening_stock) as total_stock,
-                        COUNT(CASE WHEN opening_stock <= min_stock THEN 1 END) as low_stock_count
-                    FROM inventory
-                """)
-                summary = dict(cur.fetchone())
-                cur.close()
-                conn.close()
-                
+                summary = _get_inventory_summary()
                 context_text = f"""
 Inventory Summary:
 - Total Items: {summary.get('total_items', 0)}
@@ -374,11 +428,11 @@ def chat_endpoint():
     """Chat endpoint for conversational queries."""
     payload = request.get_json(silent=True) or {}
     
-    query = payload.get("query", "").strip()
+    query = (payload.get("query") or payload.get("message") or "").strip()
     session_id = payload.get("session_id")
     
     if not query:
-        return jsonify({"error": "query is required"}), 400
+        return jsonify({"error": "query is required", "answer": "Please type a question (e.g. 'Check inventory and suggest actions')."}), 400
     
     try:
         result = process_chat_query(query, session_id)
