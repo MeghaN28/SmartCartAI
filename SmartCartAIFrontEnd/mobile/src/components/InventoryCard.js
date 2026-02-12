@@ -3,12 +3,14 @@ import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { colors, spacing, radius, typography, shadows } from '../theme';
 
-export default function InventoryCard({ item, getStockStatus, statusLabels, statusColors }) {
+export default function InventoryCard({ item, getStockStatus, statusLabels, statusColors, getDaysUntilExpiry }) {
   const { theme } = useTheme();
   const c = colors[theme] || colors.dark;
   const status = getStockStatus(item);
   const stockPercentage =
     item.threshold > 0 ? Math.min((item.quantity / (item.threshold * 3)) * 100, 100) : 0;
+  const daysUntilExpiry = getDaysUntilExpiry ? getDaysUntilExpiry(item.expiryDate) : null;
+  const expirySoon = daysUntilExpiry != null && daysUntilExpiry >= 0 && daysUntilExpiry <= 14;
 
   return (
     <View
@@ -40,6 +42,13 @@ export default function InventoryCard({ item, getStockStatus, statusLabels, stat
               {statusLabels[status]}
             </Text>
           </View>
+          {expirySoon && (
+            <View style={[styles.statusTag, { backgroundColor: '#f9731633' }]}>
+              <Text style={[styles.statusText, { color: '#f97316' }]}>
+                Expires in {daysUntilExpiry}d
+              </Text>
+            </View>
+          )}
         </View>
         <View style={styles.progressWrap}>
           <Text style={[styles.progressLabel, { color: c.textSecondary }]}>Stock level</Text>

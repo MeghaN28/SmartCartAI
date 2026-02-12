@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, FlatList, StyleSheet } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { colors, spacing, radius } from '../theme';
+import { stripMarkdown } from '../utils/stripMarkdown';
 
 export default function MessageList({ messages, isProcessing }) {
   const { theme } = useTheme();
@@ -33,7 +34,7 @@ export default function MessageList({ messages, isProcessing }) {
             style={[styles.bubbleText, { color: isUser ? '#fff' : c.text }]}
             selectable
           >
-            {item.text}
+            {isUser ? item.text : stripMarkdown(item.text)}
           </Text>
         </View>
       </View>

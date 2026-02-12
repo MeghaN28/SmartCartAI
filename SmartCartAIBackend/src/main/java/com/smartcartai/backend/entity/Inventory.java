@@ -1,6 +1,9 @@
 package com.smartcartai.backend.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -40,4 +43,10 @@ public class Inventory {
 
     @Column(name = "opening_stock")
     private Integer openingStock;
+
+    @Column(name = "expiry_date")
+    private java.time.LocalDate expiryDate;
+
+    @Column(name = "selling_price", precision = 12, scale = 2)
+    private java.math.BigDecimal sellingPrice;
 }

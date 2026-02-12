@@ -94,6 +94,25 @@ class DecisionOrchestratorState(TypedDict, total=False):
 
 
 # -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
+
+
+def strip_markdown(text: str) -> str:
+    """Remove markdown formatting so output is plain text (no **, #, etc.) for chat and suggestion tab."""
+    if not text or not isinstance(text, str):
+        return text
+    import re
+    s = text
+    s = re.sub(r'\*\*([^*]+)\*\*', r'\1', s)
+    s = re.sub(r'\*([^*]+)\*', r'\1', s)
+    s = re.sub(r'^#+\s*', '', s, flags=re.MULTILINE)
+    s = re.sub(r'__([^_]+)__', r'\1', s)
+    s = re.sub(r'_([^_]+)_', r'\1', s)
+    return s.strip()
+
+
+# -----------------------------------------------------------------------------
 # Database Utilities for RAG
 # -----------------------------------------------------------------------------
 
@@ -356,14 +375,29 @@ def synthesize_recommendation(state: DecisionOrchestratorState) -> dict:
             lines.append(f"  - {name} (similarity {sim}, stock {stock}/min {min_s}): {past_str}")
         similar_text = "\n".join(lines) if lines else "None available."
 
-    # Prepare context for LLM
+    item_data = state.get("item_data", {})
+    expiry_date = item_data.get("expiry_date") or (historical_context.get("inventory") or {}).get("expiry_date")
+    selling_price = item_data.get("selling_price") or (historical_context.get("inventory") or {}).get("selling_price")
+    days_until_expiry = None
+    if expiry_date:
+        try:
+            from datetime import date
+            e = expiry_date if isinstance(expiry_date, date) else date.fromisoformat(str(expiry_date)[:10])
+            days_until_expiry = (e - date.today()).days
+        except Exception:
+            days_until_expiry = None
+
+    # Prepare context for LLM (include expiry and price for waste/price optimization)
     context_text = f"""
-Inventory Item: {state.get('item_data', {}).get('item_name', 'Unknown')}
+Inventory Item: {item_data.get('item_name', 'Unknown')}
 Current Stock: {state.get('remaining_stock', 0)}
-Min Stock: {state.get('item_data', {}).get('min_stock', 0)}
+Min Stock: {item_data.get('min_stock', 0)}
 Forecasted Demand: {state.get('forecasted_demand', 0)}
 Stock Signal: {state.get('stock_signal', 'unknown')}
 Consumption Signal: {state.get('consumption_signal', 'unknown')}
+Expiry Date: {expiry_date or 'Not set'}
+Days until expiry: {days_until_expiry if days_until_expiry is not None else 'N/A'}
+Selling Price: {selling_price if selling_price is not None else 'Not set'}
 
 Risk Assessment: {state.get('risk_assessment', {})}
 Feasibility: {state.get('feasibility_check', {})}
@@ -379,22 +413,19 @@ Similar items (embedding-based) and their past recommendations (use as evidence)
     if llm:
         try:
             prompt = ChatPromptTemplate.from_messages([
-                ("system", """You are an expert inventory management advisor. Your job is to give a strong, prescriptive recommendation that is evidence-based and actionable.
+                ("system", """You are an expert inventory management advisor. Give a strong, prescriptive recommendation that is evidence-based and actionable.
 
-Use ALL of the following:
-1. Risk factors and their severity — weigh them explicitly.
-2. Operational feasibility and constraints.
-3. Cost implications and budget fit.
-4. This item's historical consumption and sales.
-5. Similar items (embedding-based): use their past actions and outcomes as evidence. If similar items were reordered with good results, lean toward reorder; if they were held or had issues, factor that in.
+Use: risk, feasibility, cost, historical consumption and sales, and similar-item evidence. If expiry date is near (e.g. within 7-14 days), consider suggesting discount or "sell or donate soon" to reduce waste. If selling price is available and stock is high, you may suggest a small discount to move inventory.
 
-Be specific and prescriptive. Do not hedge. Choose one clear action and justify it in 1–2 sentences.
+IMPORTANT: Output plain text only in reasoning and expected_outcome. Do not use markdown: no asterisks, no hashtags, no bold/italic. Write in clear sentences so the text can be shown in chat and in the suggestion tab as-is.
 
-Provide a structured recommendation with:
+Provide a structured recommendation as JSON with:
 - action: Exactly one of: reorder, hold, transfer, none
-- priority: High, Medium, or Low (High if stock is critical or risk is high; Low if holding is safe)
-- reasoning: 1–2 clear sentences citing risk, feasibility, cost, and (when relevant) similar-item evidence
-- expected_outcome: One concrete sentence on what will happen if this action is taken (e.g. "Stock will reach safe level within 2 weeks" or "Stockout risk will remain until next cycle")
+- priority: High, Medium, or Low
+- reasoning: 1-2 plain-text sentences (no markdown)
+- expected_outcome: One plain-text sentence (no markdown)
+- suggested_discount_percent: Optional number 0-50 if a discount is recommended (e.g. near expiry or overstock), else null
+- waste_action: Optional string if relevant, e.g. "Sell or donate soon" when expiry is near, else null
 """),
                 ("user", "Context:\n{context}\n\nProvide a single, strong prescriptive recommendation as JSON."),
             ])
@@ -402,11 +433,15 @@ Provide a structured recommendation with:
             chain = prompt | llm | JsonOutputParser()
             llm_result = chain.invoke({"context": context_text})
             
+            reasoning = llm_result.get("reasoning", "")
+            expected_outcome = llm_result.get("expected_outcome", "")
             recommendation = {
                 "action": llm_result.get("action", state.get("suggested_action", "none")),
                 "priority": llm_result.get("priority", "Medium"),
-                "reasoning": llm_result.get("reasoning", ""),
-                "expected_outcome": llm_result.get("expected_outcome", ""),
+                "reasoning": strip_markdown(reasoning),
+                "expected_outcome": strip_markdown(expected_outcome),
+                "suggested_discount_percent": llm_result.get("suggested_discount_percent"),
+                "waste_action": strip_markdown(llm_result.get("waste_action") or "") or None,
                 "llm_enhanced": True,
             }
         except Exception as e:

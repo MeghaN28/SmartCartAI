@@ -14,8 +14,24 @@ const getStockStatus = (item) => {
   return 'in-stock';
 };
 
-const statusLabels = { 'in-stock': 'In Stock', 'low-stock': 'Low Stock', 'out-of-stock': 'Out of Stock' };
-const statusColors = { 'in-stock': '#10b981', 'low-stock': '#f59e0b', 'out-of-stock': '#ef4444' };
+/** Days until expiry; negative if past. Null if no expiry set. */
+const getDaysUntilExpiry = (expiryDate) => {
+  if (!expiryDate) return null;
+  const d = typeof expiryDate === 'string' ? new Date(expiryDate) : expiryDate;
+  if (isNaN(d.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  d.setHours(0, 0, 0, 0);
+  return Math.ceil((d - today) / (1000 * 60 * 60 * 24));
+};
+
+const isExpirySoon = (item, withinDays = 14) => {
+  const days = getDaysUntilExpiry(item.expiryDate);
+  return days != null && days >= 0 && days <= withinDays;
+};
+
+const statusLabels = { 'in-stock': 'In Stock', 'low-stock': 'Low Stock', 'out-of-stock': 'Out of Stock', 'expiry-soon': 'Expiry Soon' };
+const statusColors = { 'in-stock': '#10b981', 'low-stock': '#f59e0b', 'out-of-stock': '#ef4444', 'expiry-soon': '#f97316' };
 
 export default function HomeScreen() {
   const { theme } = useTheme();
@@ -25,7 +41,7 @@ export default function HomeScreen() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStockStatus, setSelectedStockStatus] = useState('All');
   const [sortBy, setSortBy] = useState('name');
-  const stockStatusOptions = ['All', 'In Stock', 'Low Stock', 'Out of Stock'];
+  const stockStatusOptions = ['All', 'In Stock', 'Low Stock', 'Out of Stock', 'Expiry Soon'];
 
   useEffect(() => {
     fetch(API.inventory)
@@ -38,6 +54,8 @@ export default function HomeScreen() {
           category: item.itemType || item.category || 'Unknown',
           quantity: item.openingStock ?? item.current_stock ?? 0,
           threshold: item.minStock ?? item.min_stock ?? 0,
+          expiryDate: item.expiryDate || item.expiry_date || null,
+          sellingPrice: item.sellingPrice ?? item.selling_price ?? null,
         }));
         setInventory(formatted);
         setLoading(false);
@@ -50,7 +68,11 @@ export default function HomeScreen() {
       const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
       const status = getStockStatus(item);
       const statusLabel = statusLabels[status];
-      const matchesStockStatus = selectedStockStatus === 'All' || statusLabel === selectedStockStatus;
+      const expirySoon = isExpirySoon(item);
+      const matchesStockStatus =
+        selectedStockStatus === 'All' ||
+        statusLabel === selectedStockStatus ||
+        (selectedStockStatus === 'Expiry Soon' && expirySoon);
       return matchesSearch && matchesStockStatus;
     });
     if (selectedStockStatus !== 'All') {
@@ -81,6 +103,7 @@ export default function HomeScreen() {
     inStock: inventory.filter((i) => getStockStatus(i) === 'in-stock').length,
     lowStock: inventory.filter((i) => getStockStatus(i) === 'low-stock').length,
     outOfStock: inventory.filter((i) => getStockStatus(i) === 'out-of-stock').length,
+    expirySoon: inventory.filter((i) => isExpirySoon(i)).length,
   };
 
   if (loading) {
@@ -110,6 +133,7 @@ export default function HomeScreen() {
         getStockStatus={getStockStatus}
         statusLabels={statusLabels}
         statusColors={statusColors}
+        getDaysUntilExpiry={getDaysUntilExpiry}
       />
     </ScrollView>
   );

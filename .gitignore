@@ -1,7 +1,39 @@
-# Environment files with API keys
+# Environment files with API keys and secrets
 .env
+.env.*
 *.env
 .env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+.env.staging
+.env.staging.local
+
+# Secrets and credentials (do not commit)
+*secret*
+*credentials*
+*credential*
+*.pem
+*.key
+*.p12
+*.p8
+*.jks
+*.mobileprovision
+secrets/
+credentials/
+
+# Local / override configuration (often contains keys or paths)
+*.local
+*.local.*
+config.local.*
+*-local.*
+application-local.properties
+application-local.yml
+application-local.yaml
+**/application-local.*
 
 # Python
 __pycache__/

@@ -21,6 +21,20 @@ except ImportError:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("explanation")
 
+
+def strip_markdown(text: str) -> str:
+    """Remove markdown so explanation is plain text in chat and suggestion tab."""
+    if not text or not isinstance(text, str):
+        return text
+    import re
+    s = text
+    s = re.sub(r'\*\*([^*]+)\*\*', r'\1', s)
+    s = re.sub(r'\*([^*]+)\*', r'\1', s)
+    s = re.sub(r'^#+\s*', '', s, flags=re.MULTILINE)
+    s = re.sub(r'__([^_]+)__', r'\1', s)
+    s = re.sub(r'_([^_]+)_', r'\1', s)
+    return s.strip()
+
 # Configuration
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-medium")
@@ -82,13 +96,15 @@ Provide a clear, concise, and actionable explanation that covers:
 3. What the expected outcome is
 4. Any important considerations or constraints
 
-Write in a professional but accessible tone. Keep it under 200 words."""),
+Write in a professional but accessible tone. Keep it under 200 words.
+IMPORTANT: Output plain text only. Do not use markdown: no asterisks for bold, no hashtags for headers, no bullet markdown. The text will be shown in the chat and in the suggestion tab as-is."""),
                 ("user", "Generate an explanation for this recommendation:\n\n{context}"),
             ])
             
             chain = prompt | llm
             response = chain.invoke({"context": context_text})
             explanation_text = response.content if hasattr(response, 'content') else str(response)
+            explanation_text = strip_markdown(explanation_text)
             
             return {
                 "explanation": explanation_text,
@@ -102,16 +118,16 @@ Write in a professional but accessible tone. Keep it under 200 words."""),
     # Template-based explanation (fallback)
     explanation_parts = []
     
-    explanation_parts.append(f"Based on the analysis of {item_name}, the recommended action is to **{suggested_action}**.")
+    explanation_parts.append(f"Based on the analysis of {item_name}, the recommended action is to {suggested_action}.")
     
     if risk_level in ["critical", "high"]:
-        explanation_parts.append(f"This addresses a **{risk_level}** risk level with {len(risk_factors)} identified risk factors.")
+        explanation_parts.append(f"This addresses a {risk_level} risk level with {len(risk_factors)} identified risk factors.")
         if risk_factors:
             top_risk = risk_factors[0].get("description", "")
             explanation_parts.append(f"Primary concern: {top_risk}")
     
     if not is_feasible:
-        explanation_parts.append(f"⚠️ Note: This action has feasibility constraints that need to be addressed.")
+        explanation_parts.append("Note: This action has feasibility constraints that need to be addressed.")
         if constraints:
             explanation_parts.append(f"Key constraint: {constraints[0].get('description', '')}")
     
@@ -124,7 +140,7 @@ Write in a professional but accessible tone. Keep it under 200 words."""),
     explanation_parts.append(f"Taking this action will help maintain optimal inventory levels and prevent stockouts.")
     
     return {
-        "explanation": " ".join(explanation_parts),
+        "explanation": strip_markdown(" ".join(explanation_parts)),
         "llm_generated": False,
         "timestamp": __import__("datetime").datetime.now().isoformat(),
     }

@@ -13,8 +13,12 @@ CREATE TABLE inventory (
   vendor_id VARCHAR(32),
   min_stock INT,
   max_capacity INT,
-  opening_stock INT
+  opening_stock INT,
+  expiry_date DATE,
+  selling_price NUMERIC(12,2)
 );
+
+CREATE INDEX idx_inventory_expiry ON inventory(expiry_date) WHERE expiry_date IS NOT NULL;
 
 -- Sales transactions (matches `Dataset/sales_50.csv`)
 CREATE TABLE sales (

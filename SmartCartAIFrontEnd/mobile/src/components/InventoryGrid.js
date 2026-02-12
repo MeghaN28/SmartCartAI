@@ -9,6 +9,7 @@ export default function InventoryGrid({
   getStockStatus,
   statusLabels,
   statusColors,
+  getDaysUntilExpiry,
 }) {
   const { theme } = useTheme();
   const c = colors[theme] || colors.dark;
@@ -25,6 +26,7 @@ export default function InventoryGrid({
           getStockStatus={getStockStatus}
           statusLabels={statusLabels}
           statusColors={statusColors}
+          getDaysUntilExpiry={getDaysUntilExpiry}
         />
       ))}
       {filteredAndSortedInventory.length === 0 && (

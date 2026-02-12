@@ -9,10 +9,13 @@ NC='\033[0m'
 
 echo -e "${YELLOW}Starting Chat Agent...${NC}"
 
-# Set environment variables
-export MISTRAL_API_KEY=SWqT1KZpsaFqYIcd6AqFlvQrjK8xFWeC
-export MISTRAL_MODEL=mistral-medium
-export DB_HOST=localhost
+# Load .env from project root or decision-orchestration-agent (API key stays out of repo)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+for envfile in "$SCRIPT_DIR/.env" "$SCRIPT_DIR/Agents/decision-orchestration-agent/.env"; do
+  if [ -f "$envfile" ]; then set -a; source "$envfile"; set +a; break; fi
+done
+export MISTRAL_MODEL="${MISTRAL_MODEL:-mistral-medium}"
+export DB_HOST="${DB_HOST:-localhost}"
 export DB_PORT=5432
 export DB_NAME=smartcart_ai
 export DB_USER=meghanarendrasimha

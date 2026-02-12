@@ -60,6 +60,39 @@ def get_db_connection():
     )
 
 
+def get_near_expiry_items(within_days: int = 14) -> List[Dict]:
+    """Get items with expiry_date within the next within_days (for waste/donate/sell-soon flows)."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                SELECT inventory_id, item_name, category, opening_stock as remaining_stock,
+                       min_stock, max_capacity, vendor_id, expiry_date, selling_price
+                FROM inventory
+                WHERE expiry_date IS NOT NULL
+                  AND expiry_date >= CURRENT_DATE
+                  AND expiry_date <= CURRENT_DATE + INTERVAL '1 day' * %s
+                ORDER BY expiry_date ASC
+                LIMIT 20
+            """, (within_days,))
+        except Exception:
+            conn.rollback()
+            cur.execute("""
+                SELECT inventory_id, item_name, category, opening_stock as remaining_stock,
+                       min_stock, max_capacity, vendor_id
+                FROM inventory
+                LIMIT 0
+            """)
+        items = [dict(row) for row in cur.fetchall()]
+        cur.close()
+        conn.close()
+        return items
+    except Exception as e:
+        logger.error(f"Error getting near-expiry items: {e}")
+        return []
+
+
 def get_items_by_name(search: str) -> List[Dict]:
     """Get inventory items whose name contains the search term (e.g. 'apple')."""
     if not search or not search.strip():
@@ -68,14 +101,25 @@ def get_items_by_name(search: str) -> List[Dict]:
         conn = get_db_connection()
         cur = conn.cursor()
         pattern = f"%{search.strip()}%"
-        cur.execute("""
-            SELECT inventory_id, item_name, category, opening_stock as remaining_stock,
-                   min_stock, max_capacity, vendor_id
-            FROM inventory
-            WHERE item_name ILIKE %s
-            ORDER BY opening_stock ASC
-            LIMIT 20
-        """, (pattern,))
+        try:
+            cur.execute("""
+                SELECT inventory_id, item_name, category, opening_stock as remaining_stock,
+                       min_stock, max_capacity, vendor_id, expiry_date, selling_price
+                FROM inventory
+                WHERE item_name ILIKE %s
+                ORDER BY opening_stock ASC
+                LIMIT 20
+            """, (pattern,))
+        except Exception:
+            conn.rollback()
+            cur.execute("""
+                SELECT inventory_id, item_name, category, opening_stock as remaining_stock,
+                       min_stock, max_capacity, vendor_id
+                FROM inventory
+                WHERE item_name ILIKE %s
+                ORDER BY opening_stock ASC
+                LIMIT 20
+            """, (pattern,))
         items = [dict(row) for row in cur.fetchall()]
         cur.close()
         conn.close()
@@ -94,36 +138,19 @@ def get_items_needing_attention(query: str) -> List[Dict]:
         query_lower = query.lower()
         
         # Determine what items to check based on query
+        sel_ext = "SELECT inventory_id, item_name, category, opening_stock as remaining_stock, min_stock, max_capacity, vendor_id, expiry_date, selling_price FROM inventory"
+        sel_base = "SELECT inventory_id, item_name, category, opening_stock as remaining_stock, min_stock, max_capacity, vendor_id FROM inventory"
         if any(word in query_lower for word in ["low stock", "low in stock", "reorder", "suggest", "recommend"]):
-            # Get all low stock items
-            cur.execute("""
-                SELECT inventory_id, item_name, category, opening_stock as remaining_stock, 
-                       min_stock, max_capacity, vendor_id
-                FROM inventory
-                WHERE opening_stock <= min_stock
-                ORDER BY opening_stock ASC
-                LIMIT 20
-            """)
+            q = " WHERE opening_stock <= min_stock ORDER BY opening_stock ASC LIMIT 20"
         elif any(word in query_lower for word in ["all", "everything", "check"]):
-            # Get all items
-            cur.execute("""
-                SELECT inventory_id, item_name, category, opening_stock as remaining_stock,
-                       min_stock, max_capacity, vendor_id
-                FROM inventory
-                ORDER BY opening_stock ASC
-                LIMIT 20
-            """)
+            q = " ORDER BY opening_stock ASC LIMIT 20"
         else:
-            # Get low stock items by default
-            cur.execute("""
-                SELECT inventory_id, item_name, category, opening_stock as remaining_stock,
-                       min_stock, max_capacity, vendor_id
-                FROM inventory
-                WHERE opening_stock <= min_stock
-                ORDER BY opening_stock ASC
-                LIMIT 10
-            """)
-        
+            q = " WHERE opening_stock <= min_stock ORDER BY opening_stock ASC LIMIT 10"
+        try:
+            cur.execute(sel_ext + q)
+        except Exception:
+            conn.rollback()
+            cur.execute(sel_base + q)
         items = [dict(row) for row in cur.fetchall()]
         cur.close()
         conn.close()
@@ -136,6 +163,29 @@ def get_items_needing_attention(query: str) -> List[Dict]:
 # Demand forecast: past 1 week → next 1 week
 FORECAST_PAST_DAYS = 7
 FORECAST_NEXT_WEEK_DAYS = 7
+
+
+def _serialize_date(val):
+    """Return ISO date string or None for payloads."""
+    if val is None:
+        return None
+    if hasattr(val, "isoformat"):
+        return val.isoformat()
+    return str(val)[:10]
+
+
+def strip_markdown(text: str) -> str:
+    """Remove markdown so chat and suggestion tab show plain text."""
+    if not text or not isinstance(text, str):
+        return text
+    import re
+    s = text
+    s = re.sub(r'\*\*([^*]+)\*\*', r'\1', s)
+    s = re.sub(r'\*([^*]+)\*', r'\1', s)
+    s = re.sub(r'^#+\s*', '', s, flags=re.MULTILINE)
+    s = re.sub(r'__([^_]+)__', r'\1', s)
+    s = re.sub(r'_([^_]+)_', r'\1', s)
+    return s.strip()
 
 
 def get_consumption_history(inventory_id: str, last_n_days: int = FORECAST_PAST_DAYS) -> List[Dict]:
@@ -203,6 +253,8 @@ def call_decision_orchestrator(item: Dict) -> Tuple[Optional[Dict], Optional[str
                 "min_stock": min_stock,
                 "max_capacity": item.get('max_capacity', 1000),
                 "vendor_id": item.get('vendor_id'),
+                "expiry_date": _serialize_date(item.get('expiry_date')),
+                "selling_price": float(item.get('selling_price')) if item.get('selling_price') is not None else None,
             },
             "consumption_history": consumption_history[:10],
             "context": {},
@@ -316,16 +368,45 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
         "suggest", "recommend", "what should", "what do", "check", "analyze",
         "low stock", "reorder", "need", "help"
     ])
-    
+    # Waste / expiry / donate / sell-soon triggers
+    waste_trigger = any(word in query_lower for word in [
+        "waste", "donate", "sell soon", "expir", "expiry", "going to waste",
+        "sell or donate", "anything to sell", "anything to donate"
+    ])
+    if waste_trigger:
+        should_generate_suggestions = True
+
     # Get items that need attention (or all items for "check")
     items = get_items_needing_attention(query)
-    
-    # If query looks like an item name (e.g. "apple") and we got no items from the main flow, look up by name
+
+    # Waste/expiry flow: get near-expiry items (next 14 days)
+    if waste_trigger:
+        near_expiry = get_near_expiry_items(within_days=14)
+        if near_expiry:
+            items = near_expiry
+        else:
+            items = []  # Don't show low-stock suggestions when user asked about waste/expiry
+
+    # If query looks like an item name (e.g. "apple") and we got no items, look up by name
     if not items and len(query_tokens) <= 3 and query_tokens:
         items_by_name = get_items_by_name(query.strip())
         if items_by_name:
             items = items_by_name
             should_generate_suggestions = True
+
+    # "Check X and suggest" / "suggest for X": try to find item by name when we have a likely item word
+    if should_generate_suggestions and not items and len(query_tokens) >= 2:
+        stopwords = {
+            "check", "inventory", "and", "suggest", "actions", "what", "items", "need",
+            "reorder", "for", "my", "the", "me", "please", "analyze", "give", "recommendations",
+            "going", "waste", "sell", "donate", "soon", "anything", "should", "to",
+        }
+        for token in query_tokens:
+            if len(token) > 2 and token.lower() not in stopwords:
+                items_by_name = get_items_by_name(token)
+                if items_by_name:
+                    items = items_by_name
+                    break
     
     suggestions_generated = []
     answer_parts = []
@@ -402,14 +483,15 @@ Inventory Summary:
                 prompt = ChatPromptTemplate.from_messages([
                     ("system", """You are a helpful inventory management assistant for SmartCartAI.
 Answer questions about inventory, stock levels, and provide general information.
-Be concise and helpful."""),
+Be concise and helpful.
+IMPORTANT: Output plain text only. Do not use markdown: no asterisks for bold, no hashtags for headers. The answer will be shown in the chat as-is."""),
                     ("user", "Question: {query}\n\nContext:\n{context}\n\nAnswer:"),
                 ])
                 
                 chain = prompt | llm
                 response = chain.invoke({"query": query, "context": context_text})
                 answer = response.content if hasattr(response, 'content') else str(response)
-                answer_parts.append(answer)
+                answer_parts.append(strip_markdown(answer))
             except Exception as e:
                 logger.error(f"LLM processing failed: {e}")
                 answer_parts.append("I can help you with inventory questions. Try asking about low stock items, categories, or request suggestions.")

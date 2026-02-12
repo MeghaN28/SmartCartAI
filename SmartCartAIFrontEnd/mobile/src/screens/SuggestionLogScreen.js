@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl }
 import { useTheme } from '../contexts/ThemeContext';
 import { colors, spacing, radius } from '../theme';
 import { API } from '../config';
+import { stripMarkdown } from '../utils/stripMarkdown';
 
 export default function SuggestionLogScreen() {
   const { theme } = useTheme();
@@ -96,14 +97,14 @@ export default function SuggestionLogScreen() {
             {suggestion.reasoning && (
               <View style={styles.section}>
                 <Text style={[styles.label, { color: c.textSecondary }]}>Reasoning</Text>
-                <Text style={[styles.reasoningText, { color: c.text }]}>{suggestion.reasoning}</Text>
+                <Text style={[styles.reasoningText, { color: c.text }]}>{stripMarkdown(suggestion.reasoning)}</Text>
               </View>
             )}
 
             {suggestion.expectedOutcome && (
               <View style={styles.section}>
                 <Text style={[styles.label, { color: c.textSecondary }]}>Expected Outcome</Text>
-                <Text style={[styles.outcomeText, { color: c.text }]}>{suggestion.expectedOutcome}</Text>
+                <Text style={[styles.outcomeText, { color: c.text }]}>{stripMarkdown(suggestion.expectedOutcome)}</Text>
               </View>
             )}
 
