@@ -3,13 +3,12 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
-import { colors, radius } from '../theme';
+import { colors, radius, spacing } from '../theme';
 import Logo from '../components/Logo';
 
 import HomeScreen from '../screens/HomeScreen';
 import ChatbotScreen from '../screens/ChatbotScreen';
 import DashboardScreen from '../screens/DashboardScreen';
-import UploadPurchaseScreen from '../screens/UploadPurchaseScreen';
 import SuggestionLogScreen from '../screens/SuggestionLogScreen';
 
 const Tab = createBottomTabNavigator();
@@ -20,11 +19,10 @@ function TabIcon({ name, focused, theme }) {
     Inventory: '📦',
     Chatbot: '💬',
     Dashboard: '📊',
-    Upload: '📤',
     SuggestionLog: '💡',
   };
   return (
-    <Text style={{ fontSize: 22, opacity: focused ? 1 : 0.5 }}>
+    <Text style={{ fontSize: 24, opacity: focused ? 1 : 0.55 }}>
       {icons[name] || '•'}
     </Text>
   );
@@ -52,16 +50,19 @@ function TabNavigator() {
       screenOptions={{
         headerStyle: { backgroundColor: c.bg },
         headerTintColor: c.text,
-        headerTitleStyle: { fontWeight: '700', fontSize: 17 },
+        headerTitleStyle: { fontWeight: '700', fontSize: 18 },
         headerShadowVisible: false,
         tabBarStyle: {
           backgroundColor: c.card,
           borderTopColor: c.border,
           borderTopWidth: 1,
+          paddingTop: spacing.sm,
+          minHeight: 58,
         },
         tabBarActiveTintColor: c.tabActive,
         tabBarInactiveTintColor: c.tabInactive,
-        tabBarLabelStyle: { fontWeight: '600', fontSize: 11 },
+        tabBarLabelStyle: { fontWeight: '600', fontSize: 12 },
+        tabBarItemStyle: { paddingVertical: 4 },
         headerRight: () => <HeaderRight theme={theme} toggleTheme={toggleTheme} />,
       }}
     >
@@ -90,14 +91,6 @@ function TabNavigator() {
         }}
       />
       <Tab.Screen
-        name="Upload"
-        component={UploadPurchaseScreen}
-        options={{
-          title: 'Upload',
-          tabBarIcon: ({ focused }) => <TabIcon name="Upload" focused={focused} theme={theme} />,
-        }}
-      />
-      <Tab.Screen
         name="SuggestionLog"
         component={SuggestionLogScreen}
         options={{
@@ -110,8 +103,8 @@ function TabNavigator() {
 }
 
 const styles = StyleSheet.create({
-  themeBtn: { marginRight: 12, padding: 8, borderRadius: radius.md, borderWidth: 1 },
-  themeEmoji: { fontSize: 18 },
+  themeBtn: { marginRight: 14, padding: 10, borderRadius: radius.lg, borderWidth: 1 },
+  themeEmoji: { fontSize: 20 },
 });
 
 export default function AppNavigator() {

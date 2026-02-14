@@ -67,15 +67,15 @@ export default function FilterSection({
 }
 
 const styles = StyleSheet.create({
-  container: { marginTop: spacing.md },
-  label: { ...typography.label, marginBottom: spacing.xs },
-  sortRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  container: { marginTop: spacing.lg },
+  label: { ...typography.label, marginBottom: spacing.sm },
+  sortRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm },
   statusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   pill: {
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 4,
+    paddingHorizontal: spacing.lg,
     borderRadius: radius.full,
-    borderWidth: 1,
+    borderWidth: 1.5,
   },
-  pillText: { fontSize: 13, fontWeight: '600' },
+  pillText: { fontSize: 14, fontWeight: '600' },
 });

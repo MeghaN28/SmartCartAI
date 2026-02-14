@@ -34,13 +34,13 @@ const styles = StyleSheet.create({
   wrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    minHeight: 48,
+    minHeight: 52,
   },
-  icon: { fontSize: 18, marginRight: spacing.sm },
+  icon: { fontSize: 20, marginRight: spacing.sm, opacity: 0.8 },
   input: { flex: 1, paddingVertical: spacing.md, fontSize: 16 },
-  clearWrap: { padding: spacing.xs },
+  clearWrap: { padding: spacing.sm },
   clear: { fontSize: 18, fontWeight: '600' },
 });

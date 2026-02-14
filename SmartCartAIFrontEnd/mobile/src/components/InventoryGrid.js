@@ -34,7 +34,7 @@ export default function InventoryGrid({
           <Text style={styles.emptyIcon}>📋</Text>
           <Text style={[styles.emptyTitle, { color: c.text }]}>No items found</Text>
           <Text style={[styles.emptyDesc, { color: c.textSecondary }]}>
-            Try adjusting your search or filters
+            Try adjusting your search or filters.
           </Text>
         </View>
       )}
@@ -43,10 +43,10 @@ export default function InventoryGrid({
 }
 
 const styles = StyleSheet.create({
-  section: { marginTop: spacing.sm },
-  sectionTitle: { ...typography.subtitle, marginBottom: spacing.md },
+  section: { marginTop: spacing.lg },
+  sectionTitle: { ...typography.subtitle, marginBottom: spacing.lg },
   empty: { alignItems: 'center', paddingVertical: spacing.xxl * 1.5 },
-  emptyIcon: { fontSize: 48, marginBottom: spacing.md },
-  emptyTitle: { ...typography.subtitle, marginBottom: spacing.xs },
-  emptyDesc: { fontSize: 14, color: '#64748b' },
+  emptyIcon: { fontSize: 56, marginBottom: spacing.lg },
+  emptyTitle: { ...typography.subtitle, marginBottom: spacing.sm },
+  emptyDesc: { fontSize: 15, lineHeight: 22 },
 });

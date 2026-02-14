@@ -271,6 +271,9 @@ def retrieve_historical_context(inventory_id: str) -> Dict:
 
 def assess_risk(state: DecisionOrchestratorState) -> dict:
     """Call Risk Assessment subagent."""
+    inv_id = state.get("inventory_id", "?")
+    item_name = (state.get("item_data") or {}).get("item_name", "?")
+    logger.info("[Subagent] Calling Risk Assessment | item=%s | inventory_id=%s", item_name, inv_id)
     payload = {
         "inventory_id": state.get("inventory_id"),
         "item_data": state.get("item_data", {}),
@@ -291,6 +294,9 @@ def assess_risk(state: DecisionOrchestratorState) -> dict:
 
 def check_feasibility(state: DecisionOrchestratorState) -> dict:
     """Call Feasibility subagent."""
+    inv_id = state.get("inventory_id", "?")
+    item_name = (state.get("item_data") or {}).get("item_name", "?")
+    logger.info("[Subagent] Calling Feasibility | item=%s | inventory_id=%s", item_name, inv_id)
     payload = {
         "inventory_id": state.get("inventory_id"),
         "suggested_action": state.get("suggested_action"),
@@ -311,6 +317,9 @@ def check_feasibility(state: DecisionOrchestratorState) -> dict:
 
 def assess_cost_impact(state: DecisionOrchestratorState) -> dict:
     """Call Cost & Operational Impact subagent."""
+    inv_id = state.get("inventory_id", "?")
+    item_name = (state.get("item_data") or {}).get("item_name", "?")
+    logger.info("[Subagent] Calling Cost Impact | item=%s | inventory_id=%s", item_name, inv_id)
     payload = {
         "inventory_id": state.get("inventory_id"),
         "suggested_action": state.get("suggested_action"),
@@ -331,6 +340,9 @@ def assess_cost_impact(state: DecisionOrchestratorState) -> dict:
 
 def generate_explanation(state: DecisionOrchestratorState) -> dict:
     """Call Explanation Generation subagent."""
+    inv_id = state.get("inventory_id", "?")
+    item_name = (state.get("item_data") or {}).get("item_name", "?")
+    logger.info("[Subagent] Calling Explanation | item=%s | inventory_id=%s", item_name, inv_id)
     payload = {
         "inventory_id": state.get("inventory_id"),
         "suggested_action": state.get("suggested_action"),
@@ -387,6 +399,13 @@ def synthesize_recommendation(state: DecisionOrchestratorState) -> dict:
         except Exception:
             days_until_expiry = None
 
+    # Signal to LLM when user asked about waste/expiry so it suggests discount or sell/donate
+    user_asked_about_waste = (
+        state.get("event_type") == "near_expiry"
+        or state.get("context", {}).get("user_asked_about_waste")
+    )
+    waste_hint = "\nUser asked about waste/expiry (e.g. 'What's going to waste?'): Yes. Prefer suggesting discount or 'sell or donate soon' to reduce waste." if user_asked_about_waste else ""
+
     # Prepare context for LLM (include expiry and price for waste/price optimization)
     context_text = f"""
 Inventory Item: {item_data.get('item_name', 'Unknown')}
@@ -398,6 +417,8 @@ Consumption Signal: {state.get('consumption_signal', 'unknown')}
 Expiry Date: {expiry_date or 'Not set'}
 Days until expiry: {days_until_expiry if days_until_expiry is not None else 'N/A'}
 Selling Price: {selling_price if selling_price is not None else 'Not set'}
+Event type: {state.get('event_type', 'unknown')}
+{waste_hint}
 
 Risk Assessment: {state.get('risk_assessment', {})}
 Feasibility: {state.get('feasibility_check', {})}
@@ -417,15 +438,20 @@ Similar items (embedding-based) and their past recommendations (use as evidence)
 
 Use: risk, feasibility, cost, historical consumption and sales, and similar-item evidence. If expiry date is near (e.g. within 7-14 days), consider suggesting discount or "sell or donate soon" to reduce waste. If selling price is available and stock is high, you may suggest a small discount to move inventory.
 
+When suggesting discounts or waste reduction, also provide: (1) what percentage discount to give (0-50), (2) what price to sell at if you have current selling price, (3) whether to bundle with other items and with what (e.g. "Bundle with yogurt and granola").
+
 IMPORTANT: Output plain text only in reasoning and expected_outcome. Do not use markdown: no asterisks, no hashtags, no bold/italic. Write in clear sentences so the text can be shown in chat and in the suggestion tab as-is.
 
 Provide a structured recommendation as JSON with:
-- action: Exactly one of: reorder, hold, transfer, none
+- action: Exactly one of: reorder, hold, transfer, discard, none
 - priority: High, Medium, or Low
 - reasoning: 1-2 plain-text sentences (no markdown)
 - expected_outcome: One plain-text sentence (no markdown)
 - suggested_discount_percent: Optional number 0-50 if a discount is recommended (e.g. near expiry or overstock), else null
+- suggested_selling_price: Optional number or string for recommended selling price (e.g. 2.99 or "Sell at $2.99"), else null
+- bundle_suggestion: Optional string suggesting what to bundle with (e.g. "Bundle with yogurt and cereal"), else null
 - waste_action: Optional string if relevant, e.g. "Sell or donate soon" when expiry is near, else null
+- discard_reason: Required when action is discard: one plain-text sentence explaining why to discard (e.g. expired, damaged, unsaleable), else null
 """),
                 ("user", "Context:\n{context}\n\nProvide a single, strong prescriptive recommendation as JSON."),
             ])
@@ -435,24 +461,60 @@ Provide a structured recommendation as JSON with:
             
             reasoning = llm_result.get("reasoning", "")
             expected_outcome = llm_result.get("expected_outcome", "")
+            suggested_discount = llm_result.get("suggested_discount_percent")
+            suggested_price = llm_result.get("suggested_selling_price")
+            bundle_suggestion = llm_result.get("bundle_suggestion")
+            if isinstance(bundle_suggestion, str):
+                bundle_suggestion = strip_markdown(bundle_suggestion).strip() or None
+            discard_reason = llm_result.get("discard_reason")
+            if isinstance(discard_reason, str):
+                discard_reason = strip_markdown(discard_reason).strip() or None
+            extra_parts = []
+            if suggested_discount is not None:
+                extra_parts.append(f"Suggested discount: {suggested_discount}%.")
+            if suggested_price is not None:
+                extra_parts.append(f"Suggested selling price: {suggested_price}.")
+            if bundle_suggestion:
+                extra_parts.append(f"Bundle suggestion: {bundle_suggestion}.")
+            if discard_reason:
+                extra_parts.append(f"Discard reason: {discard_reason}.")
+            if extra_parts:
+                reasoning = (strip_markdown(reasoning) + " " + " ".join(extra_parts)).strip()
             recommendation = {
                 "action": llm_result.get("action", state.get("suggested_action", "none")),
                 "priority": llm_result.get("priority", "Medium"),
-                "reasoning": strip_markdown(reasoning),
+                "reasoning": reasoning,
                 "expected_outcome": strip_markdown(expected_outcome),
-                "suggested_discount_percent": llm_result.get("suggested_discount_percent"),
+                "suggested_discount_percent": suggested_discount,
+                "suggested_selling_price": suggested_price if suggested_price is not None else None,
+                "bundle_suggestion": bundle_suggestion,
                 "waste_action": strip_markdown(llm_result.get("waste_action") or "") or None,
+                "discard_reason": discard_reason,
                 "llm_enhanced": True,
             }
         except Exception as e:
             logger.error(f"LLM synthesis failed: {e}")
-            recommendation = {
-                "action": state.get("suggested_action", "none"),
-                "priority": "Medium",
-                "reasoning": "Based on rule-based analysis",
-                "expected_outcome": "Stock levels will be maintained",
-                "llm_enhanced": False,
-            }
+            if user_asked_about_waste:
+                recommendation = {
+                    "action": "none",
+                    "priority": "Medium",
+                    "reasoning": "Item is near expiry. Consider a 10-20% discount or sell/donate soon. Bundle with complementary items if possible.",
+                    "expected_outcome": "Reduced waste and better use of soon-to-expire inventory.",
+                    "suggested_discount_percent": 15,
+                    "suggested_selling_price": None,
+                    "bundle_suggestion": "Bundle with complementary items to move stock.",
+                    "discard_reason": None,
+                    "llm_enhanced": False,
+                }
+            else:
+                recommendation = {
+                    "action": state.get("suggested_action", "none"),
+                    "priority": "Medium",
+                    "reasoning": "Based on rule-based analysis",
+                    "expected_outcome": "Stock levels will be maintained",
+                    "discard_reason": None,
+                    "llm_enhanced": False,
+                }
     else:
         # Fallback to rule-based recommendation
         risk_level = state.get("risk_assessment", {}).get("risk_level", "medium")
@@ -466,13 +528,27 @@ Provide a structured recommendation as JSON with:
         else:
             priority = "Low"
         
-        recommendation = {
-            "action": state.get("suggested_action", "none"),
-            "priority": priority,
-            "reasoning": f"Risk: {risk_level}, Feasible: {is_feasible}, Budget: {within_budget}",
-            "expected_outcome": "Stock levels will be optimized",
-            "llm_enhanced": False,
-        }
+        if user_asked_about_waste:
+            recommendation = {
+                "action": "none",
+                "priority": priority,
+                "reasoning": "Item is near expiry. Consider a 10-20% discount or sell/donate soon. Bundle with complementary items if possible.",
+                "expected_outcome": "Reduced waste and better use of soon-to-expire inventory.",
+                "suggested_discount_percent": 15,
+                "suggested_selling_price": None,
+                "bundle_suggestion": "Bundle with complementary items to move stock.",
+                "discard_reason": None,
+                "llm_enhanced": False,
+            }
+        else:
+            recommendation = {
+                "action": state.get("suggested_action", "none"),
+                "priority": priority,
+                "reasoning": f"Risk: {risk_level}, Feasible: {is_feasible}, Budget: {within_budget}",
+                "expected_outcome": "Stock levels will be optimized",
+                "discard_reason": None,
+                "llm_enhanced": False,
+            }
     
     return {
         "recommendation": {
@@ -570,7 +646,9 @@ app = Flask(__name__)
 def orchestrate():
     """Main orchestration endpoint."""
     payload = request.get_json(silent=True) or {}
-    logger.info("Received orchestration request: %s", payload.get("inventory_id"))
+    inv_id = payload.get("inventory_id", "?")
+    item_name = (payload.get("item_data") or {}).get("item_name", "?")
+    logger.info("[Orchestrator] Received request | item=%s | inventory_id=%s | event_type=%s", item_name, inv_id, payload.get("event_type", ""))
     
     initial_state: DecisionOrchestratorState = {
         "inventory_id": payload.get("inventory_id", ""),
@@ -587,6 +665,9 @@ def orchestrate():
     
     graph = get_orchestration_graph()
     final_state = graph.invoke(initial_state)
+    
+    rec = final_state.get("recommendation", {})
+    logger.info("[Orchestrator] Pipeline complete | item=%s | inventory_id=%s | action=%s", item_name, inv_id, rec.get("action", "?"))
     
     return jsonify({
         "recommendation": final_state.get("recommendation", {}),

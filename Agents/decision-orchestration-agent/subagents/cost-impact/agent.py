@@ -127,8 +127,8 @@ def assess_cost_impact(inventory_id: str, suggested_action: str, item_data: Dict
             "transfer_cost": estimated_cost,
         }
     
-    elif suggested_action in ["hold", "none"]:
-        # No additional cost
+    elif suggested_action in ["hold", "none", "discard"]:
+        # No additional cost (discard may have minimal disposal cost; treat as zero here)
         estimated_cost = 0.0
         cost_breakdown = {"action": "no_cost"}
     

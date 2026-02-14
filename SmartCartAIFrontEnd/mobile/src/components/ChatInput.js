@@ -42,21 +42,21 @@ export default function ChatInput({ inputText, setInputText, handleSendMessage, 
 }
 
 const styles = StyleSheet.create({
-  wrapper: { padding: spacing.md, borderTopWidth: 1 },
+  wrapper: { padding: spacing.lg, borderTopWidth: 1 },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    paddingHorizontal: spacing.sm,
-    minHeight: 48,
+    borderRadius: radius.xl,
+    borderWidth: 1.5,
+    paddingHorizontal: spacing.md,
+    minHeight: 52,
   },
-  input: { flex: 1, paddingVertical: spacing.md, fontSize: 16, maxHeight: 100 },
+  input: { flex: 1, paddingVertical: spacing.md, fontSize: 16, maxHeight: 120 },
   clearBtn: { padding: spacing.sm },
   sendBtn: {
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.md + 2,
-    borderRadius: radius.md,
+    paddingVertical: spacing.sm + 4,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.lg,
   },
   sendText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 });

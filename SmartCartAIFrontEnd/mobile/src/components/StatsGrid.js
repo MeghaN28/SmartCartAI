@@ -24,9 +24,11 @@ export default function StatsGrid({ stats }) {
         return (
           <View
             key={key}
-            style={[styles.card, { backgroundColor: c.card, borderColor: c.border }, shadows.sm]}
+            style={[styles.card, { backgroundColor: c.card, borderColor: c.border }, shadows.card]}
           >
-            <Text style={styles.icon}>{icon}</Text>
+            <View style={[styles.iconWrap, { backgroundColor: color + '18' }]}>
+              <Text style={styles.icon}>{icon}</Text>
+            </View>
             <Text style={[styles.value, { color: c.text }]}>{stats[key]}</Text>
             <Text style={[styles.label, { color: c.textSecondary }]}>{label}</Text>
           </View>
@@ -37,14 +39,22 @@ export default function StatsGrid({ stats }) {
 }
 
 const styles = StyleSheet.create({
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.lg },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginBottom: spacing.lg },
   card: {
-    width: '48%',
-    padding: spacing.md + 2,
-    borderRadius: radius.md,
+    width: '47%',
+    padding: spacing.lg,
+    borderRadius: radius.lg,
     borderWidth: 1,
   },
-  icon: { fontSize: 24, marginBottom: spacing.xs },
-  value: { ...typography.titleSmall, fontSize: 22 },
-  label: { fontSize: 12, marginTop: 2, fontWeight: '500' },
+  iconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  icon: { fontSize: 22 },
+  value: { ...typography.titleSmall, fontSize: 24 },
+  label: { fontSize: 13, marginTop: 4, fontWeight: '500' },
 });

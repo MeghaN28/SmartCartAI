@@ -31,11 +31,11 @@ const isExpirySoon = (item, withinDays = 14) => {
 };
 
 const statusLabels = { 'in-stock': 'In Stock', 'low-stock': 'Low Stock', 'out-of-stock': 'Out of Stock', 'expiry-soon': 'Expiry Soon' };
-const statusColors = { 'in-stock': '#10b981', 'low-stock': '#f59e0b', 'out-of-stock': '#ef4444', 'expiry-soon': '#f97316' };
 
 export default function HomeScreen() {
   const { theme } = useTheme();
   const c = colors[theme] || colors.dark;
+  const statusColors = { 'in-stock': c.success, 'low-stock': c.warning, 'out-of-stock': c.danger, 'expiry-soon': '#f97316' };
   const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');

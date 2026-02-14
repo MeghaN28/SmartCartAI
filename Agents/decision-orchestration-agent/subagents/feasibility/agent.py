@@ -39,7 +39,7 @@ def check_feasibility(inventory_id: str, suggested_action: str, item_data: Dict,
     is_feasible = True
     
     # Check 1: Action validity
-    valid_actions = ["reorder", "hold", "transfer", "none"]
+    valid_actions = ["reorder", "hold", "transfer", "discard", "none"]
     if suggested_action not in valid_actions:
         constraints.append({
             "constraint": "invalid_action",

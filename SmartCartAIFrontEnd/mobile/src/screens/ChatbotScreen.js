@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
-import { colors, spacing } from '../theme';
+import { colors, spacing, radius } from '../theme';
 import { API } from '../config';
 import WelcomeScreen from '../components/WelcomeScreen';
 import MessageList from '../components/MessageList';
@@ -18,7 +18,7 @@ export default function ChatbotScreen() {
   const [messages, setMessages] = useState([
     {
       id: generateId(),
-      text: "Hello! I'm your SmartCartAI assistant. I can analyze your inventory, check stock levels, and generate suggestions. Try asking: 'Check inventory and suggest actions' or 'What items need reordering?'",
+      text: "Hello! I'm your SmartCartAI assistant. I can analyze your inventory, check stock levels, and generate suggestions. Loading proactive alerts...",
       sender: 'bot',
       timestamp: new Date(),
     },
@@ -28,6 +28,47 @@ export default function ChatbotScreen() {
   const [agentError, setAgentError] = useState(null);
   const [mode, setMode] = useState('text');
   const [sessionId] = useState(() => generateId()); // Persistent session ID
+  const [proactiveFetched, setProactiveFetched] = useState(false);
+
+  // Proactive alerts: fetch waste/expired/out of stock/overstock and show before user asks
+  useEffect(() => {
+    if (proactiveFetched || messages.length > 1) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(API.agents.proactive, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId }),
+        });
+        if (cancelled) return;
+        const data = await res.json().catch(() => ({}));
+        const answer = data.answer || data.error || '';
+        const suggestionNote = data.suggestions_count > 0
+          ? `\n\n💡 ${data.suggestions_count} suggestion(s) saved. Check the Suggestions tab.`
+          : '';
+        setMessages((prev) => {
+          if (prev.length !== 1) return prev;
+          const welcome = prev[0];
+          const welcomeText = "Hello! I'm your SmartCartAI assistant. I can analyze your inventory, check stock levels, and generate suggestions. Try asking: 'Check inventory and suggest actions' or 'What items need reordering?'";
+          return [
+            { ...welcome, text: welcomeText },
+            { id: generateId(), text: (answer || 'No alerts right now.') + suggestionNote, sender: 'bot', timestamp: new Date() },
+          ];
+        });
+      } catch (_) {
+        if (!cancelled) {
+          setMessages((prev) => {
+            if (prev.length !== 1) return prev;
+            return [{ ...prev[0], text: "Hello! I'm your SmartCartAI assistant. I can analyze your inventory, check stock levels, and generate suggestions. Try asking: 'Check inventory and suggest actions' or 'What items need reordering?'" }];
+          });
+        }
+      } finally {
+        if (!cancelled) setProactiveFetched(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [sessionId, proactiveFetched, messages.length]);
 
   const sendToAgent = async (text) => {
     if (!text?.trim()) return;
@@ -110,7 +151,7 @@ export default function ChatbotScreen() {
         />
       )}
       {agentError ? (
-        <View style={[styles.errorWrap, { backgroundColor: c.danger + '20' }]}>
+        <View style={[styles.errorWrap, { backgroundColor: c.danger + '18', borderColor: c.danger + '40' }]}>
           <Text style={[styles.errorText, { color: c.danger }]}>Agent Error: {agentError}</Text>
         </View>
       ) : null}
@@ -120,6 +161,6 @@ export default function ChatbotScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  errorWrap: { padding: spacing.sm, marginHorizontal: spacing.md, marginBottom: spacing.sm, borderRadius: 8 },
-  errorText: { fontSize: 12 },
+  errorWrap: { padding: spacing.md, marginHorizontal: spacing.lg, marginBottom: spacing.md, borderRadius: radius.lg, borderWidth: 1 },
+  errorText: { fontSize: 13 },
 });

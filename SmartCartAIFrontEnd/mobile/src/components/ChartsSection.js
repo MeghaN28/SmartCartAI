@@ -9,7 +9,13 @@ const chartConfig = (c) => ({
   backgroundGradientFrom: c.card,
   backgroundGradientTo: c.card,
   decimalPlaces: 0,
-  color: (opacity = 1) => `rgba(56, 189, 248, ${opacity})`,
+  color: (opacity = 1) => {
+    const hex = c.primary.replace('#', '');
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+  },
   labelColor: () => c.textSecondary,
 });
 
@@ -79,11 +85,11 @@ export default function ChartsSection({ categoryChartData, statusData, colors: c
 const styles = StyleSheet.create({
   section: { marginBottom: spacing.lg },
   chartCard: {
-    padding: spacing.md,
+    padding: spacing.lg,
     borderRadius: radius.lg,
     borderWidth: 1,
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
   },
-  chartTitle: { ...typography.subtitle, marginBottom: spacing.sm },
-  chart: { borderRadius: radius.md },
+  chartTitle: { ...typography.subtitle, marginBottom: spacing.md },
+  chart: { borderRadius: radius.lg },
 });

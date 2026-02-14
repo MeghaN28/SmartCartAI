@@ -41,6 +41,7 @@ DB_NAME = os.getenv("DB_NAME", "smartcart_ai")
 DB_USER = os.getenv("DB_USER", "meghanarendrasimha")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "Welcome@123")
 MONITORING_INTERVAL = int(os.getenv("MONITORING_INTERVAL", "30"))  # seconds
+FORECAST_METHOD = os.getenv("FORECAST_METHOD", "ets")  # exponential_smoothing | moving_average | ets
 
 # MCP Server
 mcp = FastMCP("Inventory Monitoring Agent")
@@ -108,6 +109,159 @@ def fetch_inventory_item(inventory_id: str) -> Optional[dict]:
     except Exception as e:
         logger.error(f"Error fetching inventory item {inventory_id}: {e}")
         return None
+
+
+# -----------------------------------------------------------------------------
+# Query-based item lookup (for Chat Agent: low stock, expired, near expiring, waste, etc.)
+# -----------------------------------------------------------------------------
+
+
+def get_near_expiry_items(within_days: int = 14) -> List[dict]:
+    """Get items with expiry_date within the next within_days (for waste/donate/sell-soon flows)."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                SELECT inventory_id, item_name, category, opening_stock AS remaining_stock,
+                       min_stock, max_capacity, vendor_id, expiry_date, selling_price
+                FROM inventory
+                WHERE expiry_date IS NOT NULL
+                  AND expiry_date >= CURRENT_DATE
+                  AND expiry_date <= CURRENT_DATE + INTERVAL '1 day' * %s
+                ORDER BY expiry_date ASC
+                LIMIT 20
+            """, (within_days,))
+        except Exception:
+            conn.rollback()
+            cur.execute("""
+                SELECT inventory_id, item_name, category, opening_stock AS remaining_stock,
+                       min_stock, max_capacity, vendor_id
+                FROM inventory
+                LIMIT 0
+            """)
+        items = [dict(row) for row in cur.fetchall()]
+        cur.close()
+        conn.close()
+        return items
+    except Exception as e:
+        logger.error(f"Error getting near-expiry items: {e}")
+        return []
+
+
+def get_items_by_name(search: str) -> List[dict]:
+    """Get inventory items whose name contains the search term."""
+    if not search or not search.strip():
+        return []
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        pattern = f"%{search.strip()}%"
+        try:
+            cur.execute("""
+                SELECT inventory_id, item_name, category, opening_stock AS remaining_stock,
+                       min_stock, max_capacity, vendor_id, expiry_date, selling_price
+                FROM inventory
+                WHERE item_name ILIKE %s
+                ORDER BY opening_stock ASC
+                LIMIT 20
+            """, (pattern,))
+        except Exception:
+            conn.rollback()
+            cur.execute("""
+                SELECT inventory_id, item_name, category, opening_stock AS remaining_stock,
+                       min_stock, max_capacity, vendor_id
+                FROM inventory
+                WHERE item_name ILIKE %s
+                ORDER BY opening_stock ASC
+                LIMIT 20
+            """, (pattern,))
+        items = [dict(row) for row in cur.fetchall()]
+        cur.close()
+        conn.close()
+        return items
+    except Exception as e:
+        logger.error(f"Error getting items by name: {e}")
+        return []
+
+
+def get_items_needing_attention(query: str) -> List[dict]:
+    """Get inventory items that need attention based on the user query (low stock, check all, etc.)."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        query_lower = query.lower()
+        sel_ext = (
+            "SELECT inventory_id, item_name, category, opening_stock AS remaining_stock, "
+            "min_stock, max_capacity, vendor_id, expiry_date, selling_price FROM inventory"
+        )
+        sel_base = (
+            "SELECT inventory_id, item_name, category, opening_stock AS remaining_stock, "
+            "min_stock, max_capacity, vendor_id FROM inventory"
+        )
+        if any(w in query_lower for w in ["low stock", "low in stock", "reorder", "suggest", "recommend"]):
+            q = " WHERE opening_stock <= min_stock ORDER BY opening_stock ASC LIMIT 20"
+        elif any(w in query_lower for w in ["all", "everything", "check"]):
+            q = " ORDER BY opening_stock ASC LIMIT 20"
+        else:
+            q = " WHERE opening_stock <= min_stock ORDER BY opening_stock ASC LIMIT 10"
+        try:
+            cur.execute(sel_ext + q)
+        except Exception:
+            conn.rollback()
+            cur.execute(sel_base + q)
+        items = [dict(row) for row in cur.fetchall()]
+        cur.close()
+        conn.close()
+        return items
+    except Exception as e:
+        logger.error(f"Error getting items needing attention: {e}")
+        return []
+
+
+def query_inventory_for_user(query: str) -> Dict:
+    """
+    Interpret user query and return matching items from the database.
+    Used by the Chat Agent so that inventory-agent is the single place that 'sees' the DB
+    for user intent (low stock, expired, near expiring, waste, reorder, etc.).
+    Returns {"items": [...], "query_type": "low_stock"|"near_expiry"|"by_name"|"check"|"none"}.
+    """
+    query_lower = query.lower().strip()
+    query_tokens = [t for t in query.split() if t]
+
+    # Waste / expiry / donate / sell-soon
+    waste_trigger = any(w in query_lower for w in [
+        "waste", "donate", "sell soon", "expir", "expiry", "going to waste",
+        "sell or donate", "anything to sell", "anything to donate"
+    ])
+    if waste_trigger:
+        near_expiry = get_near_expiry_items(within_days=14)
+        return {"items": near_expiry, "query_type": "near_expiry"}
+
+    # Default: items needing attention (low stock, suggest, recommend, check)
+    items = get_items_needing_attention(query)
+
+    # If query looks like an item name and we got nothing, look up by name
+    if not items and len(query_tokens) <= 3 and query_tokens:
+        items_by_name = get_items_by_name(query.strip())
+        if items_by_name:
+            return {"items": items_by_name, "query_type": "by_name"}
+
+    # "Check X and suggest" – try to find item by name from tokens
+    if not items and len(query_tokens) >= 2:
+        stopwords = {
+            "check", "inventory", "and", "suggest", "actions", "what", "items", "need",
+            "reorder", "for", "my", "the", "me", "please", "analyze", "give", "recommendations",
+            "going", "waste", "sell", "donate", "soon", "anything", "should", "to",
+        }
+        for token in query_tokens:
+            if len(token) > 2 and token.lower() not in stopwords:
+                items_by_name = get_items_by_name(token)
+                if items_by_name:
+                    return {"items": items_by_name, "query_type": "by_name"}
+
+    query_type = "check" if any(w in query_lower for w in ["all", "everything", "check"]) else "low_stock"
+    return {"items": items, "query_type": query_type}
 
 
 def fetch_consumption_history(inventory_id: str, days: int = 30) -> List[dict]:
@@ -180,10 +334,21 @@ def calculate_current_stock(inventory_id: str) -> Optional[int]:
 # -----------------------------------------------------------------------------
 # Forecasting Functions (next 1 week forecast from past 1 week historical data)
 # -----------------------------------------------------------------------------
+# ETS = Error, Trend, Seasonal (Holt-Winters). The 3 parameters are:
+#   alpha (α) - level smoothing
+#   beta  (β)  - trend smoothing
+#   gamma (γ)  - seasonal smoothing
+# -----------------------------------------------------------------------------
 
 # Demand forecast: use past 7 days of consumption to forecast for the next 7 days
 FORECAST_PAST_DAYS = 7
 FORECAST_NEXT_WEEK_DAYS = 7
+
+# ETS default smoothing parameters (α, β, γ)
+ETS_ALPHA = float(os.getenv("ETS_ALPHA", "0.3"))
+ETS_BETA = float(os.getenv("ETS_BETA", "0.1"))
+ETS_GAMMA = float(os.getenv("ETS_GAMMA", "0.1"))
+ETS_PERIOD = int(os.getenv("ETS_PERIOD", "7"))  # seasonal period (e.g. 7 for weekly)
 
 
 def exponential_smoothing(history: List[float], alpha: float = 0.3) -> float:
@@ -209,9 +374,62 @@ def moving_average(history: List[float], window: int = 7) -> float:
     return sum(history[-window:]) / window
 
 
+def ets_forecast(
+    history: List[float],
+    alpha: float = 0.3,
+    beta: float = 0.1,
+    gamma: float = 0.1,
+    period: int = 7,
+) -> float:
+    """ETS (Holt-Winters) demand forecast. Returns expected daily rate.
+    The 3 parameters are: alpha (level), beta (trend), gamma (seasonal) smoothing.
+    If history is shorter than 2*period, falls back to Holt (α, β) or simple (α)."""
+    if not history:
+        return 0.0
+    if len(history) == 1:
+        return history[0]
+
+    # Need at least 2*period for seasonal; otherwise use Holt or simple
+    if len(history) < 2 * period:
+        if len(history) < 2:
+            return exponential_smoothing(history, alpha)
+        # Holt's method (level + trend), no seasonal
+        level = history[0]
+        trend = history[1] - history[0]
+        for y in history[2:]:
+            level_prev, level = level, alpha * y + (1 - alpha) * (level + trend)
+            trend = beta * (level - level_prev) + (1 - beta) * trend
+        return max(0.0, level + trend)
+
+    # Holt-Winters additive: level, trend, seasonal
+    m = period
+    # Initialize seasonal indices (average of each position in the cycle)
+    seasonal = [0.0] * m
+    for i in range(m):
+        seasonal[i] = sum(history[i + k * m] for k in range(len(history) // m) if i + k * m < len(history))
+    n_cycles = len(history) // m
+    seasonal = [s / n_cycles if n_cycles else 0.0 for s in seasonal]
+    # Initial level = first period average minus average seasonal
+    level = sum(history[:m]) / m - sum(seasonal) / m
+    trend = (sum(history[m : 2 * m]) / m - sum(history[:m]) / m) / m if len(history) >= 2 * m else 0.0
+
+    for i in range(m, len(history)):
+        y = history[i]
+        s_old = seasonal[i % m]
+        level_new = alpha * (y - s_old) + (1 - alpha) * (level + trend)
+        trend = beta * (level_new - level) + (1 - beta) * trend
+        seasonal[i % m] = gamma * (y - level_new) + (1 - gamma) * s_old
+        level = level_new
+
+    # One-step-ahead forecast (next day): level + trend + seasonal for next position
+    next_seasonal = seasonal[len(history) % m]
+    return max(0.0, level + trend + next_seasonal)
+
+
 def forecast_demand(consumption_history: List[dict], method: str = "exponential_smoothing") -> float:
     """Forecast demand for the next 1 week: expected daily demand rate based on past 1 week of consumption.
-    consumption_history should be the last 7 days. Return value = daily rate; next-week total = rate * 7."""
+    consumption_history should be the last 7 days. Return value = daily rate; next-week total = rate * 7.
+    Methods: exponential_smoothing, moving_average, ets (Holt-Winters with α, β, γ)."""
     if not consumption_history:
         return 0.0
     
@@ -222,13 +440,21 @@ def forecast_demand(consumption_history: List[dict], method: str = "exponential_
     if not consumptions:
         return 0.0
     
-    # Reverse to chronological order (oldest first) for exponential smoothing
+    # Reverse to chronological order (oldest first) for exponential smoothing / ETS
     consumptions.reverse()
     
     if method == "exponential_smoothing":
         return exponential_smoothing(consumptions)
     elif method == "moving_average":
         return moving_average(consumptions, window=FORECAST_PAST_DAYS)
+    elif method == "ets":
+        return ets_forecast(
+            consumptions,
+            alpha=ETS_ALPHA,
+            beta=ETS_BETA,
+            gamma=ETS_GAMMA,
+            period=ETS_PERIOD,
+        )
     else:
         return moving_average(consumptions, window=FORECAST_PAST_DAYS)
 
@@ -301,7 +527,7 @@ def suggest_action(state: InventoryAgentState) -> dict:
     min_stock = item_data.get("min_stock", 10)
     
     # Forecast demand
-    forecasted_demand = forecast_demand(consumption_history, method="exponential_smoothing")
+    forecasted_demand = forecast_demand(consumption_history, method=FORECAST_METHOD)
     
     # Analyze consumption signal
     if consumption_history:
@@ -500,7 +726,7 @@ def check_inventory_status(inventory_id: str) -> dict:
     
     current_stock = calculate_current_stock(inventory_id)
     consumption_history = fetch_consumption_history(inventory_id, days=FORECAST_PAST_DAYS)
-    forecasted_demand = forecast_demand(consumption_history)
+    forecasted_demand = forecast_demand(consumption_history, method=FORECAST_METHOD)
     forecast_next_week_total = round(forecasted_demand * FORECAST_NEXT_WEEK_DAYS, 2)
     
     return {
@@ -544,6 +770,21 @@ def signal_inventory_item(inventory_id: str, event_type: str = "low_stock") -> d
 # -----------------------------------------------------------------------------
 
 app = Flask(__name__)
+
+
+@app.route("/query", methods=["POST"])
+def query():
+    """
+    Accept a user query and return items from the database that match the intent.
+    Used by the Chat Agent: inventory-agent is the single place that sees the DB
+    for user queries (low stock, expired, near expiring, waste, etc.).
+    """
+    payload = request.get_json(silent=True) or {}
+    user_query = (payload.get("query") or payload.get("message") or "").strip()
+    if not user_query:
+        return jsonify({"items": [], "query_type": "none", "error": "query is required"}), 400
+    result = query_inventory_for_user(user_query)
+    return jsonify(result), 200
 
 
 @app.route("/inventory", methods=["POST"])

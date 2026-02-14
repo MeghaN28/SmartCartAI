@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { colors, spacing, radius, typography } from '../theme';
-import { API, IGENTIC } from '../config';
+import { API } from '../config';
 import StatsGrid from '../components/StatsGrid';
 import ChartsSection from '../components/ChartsSection';
 import LowStockAlerts from '../components/LowStockAlerts';
@@ -75,8 +75,40 @@ export default function DashboardScreen() {
   const [parsedData, setParsedData] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [agentLoading, setAgentLoading] = useState(false);
+  const [suggestionLoading, setSuggestionLoading] = useState(false);
+  const [proactiveAlert, setProactiveAlert] = useState(null);
+  const [proactiveLoading, setProactiveLoading] = useState(true);
+  const [proactiveError, setProactiveError] = useState(null);
 
   const itemsPerPage = 20;
+
+  const fetchProactiveAlerts = React.useCallback(async () => {
+    setProactiveLoading(true);
+    setProactiveError(null);
+    try {
+      const res = await fetch(API.agents.proactive, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: 'dashboard-' + Date.now() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setProactiveAlert(data.answer || null);
+      } else {
+        setProactiveAlert(null);
+        setProactiveError(data.error || 'Could not load alerts');
+      }
+    } catch (e) {
+      setProactiveAlert(null);
+      setProactiveError(e.message || 'Proactive alerts unavailable');
+    } finally {
+      setProactiveLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchProactiveAlerts();
+  }, [fetchProactiveAlerts]);
 
   useEffect(() => {
     setLoading(true);
@@ -254,6 +286,32 @@ export default function DashboardScreen() {
     }
   };
 
+  /** Ask SmartCart AI Chat agent for suggestion (uses our agent, not iGentic). */
+  const askSmartCartForSuggestion = async () => {
+    const query = (selectedItemSearch || '').trim() || 'Check inventory and suggest actions';
+    setSuggestionLoading(true);
+    setAgentError(null);
+    try {
+      const res = await fetch(API.agents.chat, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, session_id: 'dashboard-' + Date.now() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `Request failed: ${res.status}`);
+      }
+      const answer = data.answer || 'Done. Check the Suggestions tab for details.';
+      const count = data.suggestions_count > 0 ? `\n\n💡 ${data.suggestions_count} suggestion(s) saved. Check the Suggestions tab.` : '';
+      Alert.alert('SmartCart AI', answer + count);
+    } catch (err) {
+      setAgentError(err.message || String(err));
+      Alert.alert('Error', err.message || 'Could not get suggestion. Ensure backend and Chat agent are running.');
+    } finally {
+      setSuggestionLoading(false);
+    }
+  };
+
   const handleAddItem = () => {
     const created = {
       id: generateId(),
@@ -283,28 +341,53 @@ export default function DashboardScreen() {
         <View style={styles.searchRow}>
           <TextInput
             style={[styles.searchInput, { color: c.text, backgroundColor: c.card, borderColor: c.border }]}
-            placeholder="Search item..."
+            placeholder="Search or ask for suggestion (e.g. low stock, milk)..."
             placeholderTextColor={c.textMuted}
             value={selectedItemSearch}
             onChangeText={setSelectedItemSearch}
           />
           <TouchableOpacity
             style={[styles.agentBtn, { backgroundColor: c.primary }]}
-            onPress={() => {
-              if (filteredInventory.length > 0) sendToAgent(filteredInventory[0]);
-              else Alert.alert('Info', 'No item selected or available.');
-            }}
-            disabled={agentLoading}
-            activeOpacity={0.85}
+            onPress={askSmartCartForSuggestion}
+            disabled={suggestionLoading}
+            activeOpacity={0.88}
           >
-            <Text style={styles.agentBtnText}>{agentLoading ? '...' : 'Send to Agent'}</Text>
+            <Text style={styles.agentBtnText}>{suggestionLoading ? '…' : 'Get suggestion'}</Text>
           </TouchableOpacity>
         </View>
+        <Text style={[styles.hint, { color: c.textSecondary }]}>
+          SmartCart AI · Use Recommend in the table for a single-item suggestion.
+        </Text>
       </View>
 
       <StatsGrid stats={stats} />
       <ChartsSection categoryChartData={categoryChartData} statusData={statusData} colors={chartC} />
       <LowStockAlerts lowStockAlerts={lowStockAlerts} />
+
+      <View style={[styles.section, styles.proactiveSection]}>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: c.text }]}>Proactive Alerts</Text>
+          <TouchableOpacity
+            style={[styles.addBtn, { backgroundColor: c.primary }]}
+            onPress={fetchProactiveAlerts}
+            disabled={proactiveLoading}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.addBtnText}>{proactiveLoading ? 'Loading…' : 'Refresh'}</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={[styles.proactiveCard, { backgroundColor: c.card, borderColor: c.border }]}>
+          {proactiveLoading && !proactiveAlert ? (
+            <ActivityIndicator size="small" color={c.primary} style={styles.proactiveLoader} />
+          ) : proactiveError && !proactiveAlert ? (
+            <Text style={[styles.proactiveText, { color: c.textSecondary }]}>{proactiveError}</Text>
+          ) : proactiveAlert ? (
+            <Text style={[styles.proactiveText, { color: c.text }]}>{proactiveAlert}</Text>
+          ) : (
+            <Text style={[styles.proactiveText, { color: c.textSecondary }]}>No proactive alerts. Check the Chat tab for full recommendations.</Text>
+          )}
+        </View>
+      </View>
 
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
@@ -338,6 +421,7 @@ export default function DashboardScreen() {
           handleSaveEdit={handleSaveEdit}
           handleCancelEdit={handleCancelEdit}
           handleDelete={(id) => setInventory(inventory.filter((it) => it.id !== id))}
+          onRecommend={sendToAgent}
         />
 
         {totalPages > 1 && (
@@ -386,23 +470,33 @@ export default function DashboardScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { padding: spacing.lg, paddingBottom: spacing.xl * 3 },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxl * 2 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: spacing.md },
-  header: { marginBottom: spacing.lg },
-  pageTitle: { ...typography.title, marginBottom: spacing.sm },
-  searchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  searchInput: { flex: 1, padding: spacing.md, borderRadius: radius.md, borderWidth: 1 },
-  agentBtn: { paddingVertical: spacing.md, paddingHorizontal: spacing.lg, borderRadius: radius.md },
-  agentBtnText: { color: '#fff', fontWeight: '700' },
-  section: { marginTop: spacing.lg },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.md },
-  sectionTitle: { ...typography.subtitle },
-  addBtn: { paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.md, borderRadius: radius.md },
-  addBtnText: { color: '#fff', fontWeight: '600' },
-  pagination: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.md, marginTop: spacing.lg },
-  pageBtn: { paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.md, borderRadius: radius.md },
-  pageNum: { fontWeight: '600' },
-  errorWrap: { padding: spacing.md, borderRadius: radius.md, marginTop: spacing.md },
+  header: { marginBottom: spacing.xl },
+  pageTitle: { ...typography.title, marginBottom: spacing.md },
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  searchInput: { flex: 1, padding: spacing.md + 2, borderRadius: radius.lg, borderWidth: 1.5, fontSize: 16 },
+  agentBtn: { paddingVertical: spacing.md + 2, paddingHorizontal: spacing.lg, borderRadius: radius.lg },
+  agentBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  hint: { fontSize: 12, marginTop: spacing.sm },
+  section: { marginTop: spacing.xl },
+  proactiveSection: {},
+  proactiveCard: {
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    minHeight: 64,
+  },
+  proactiveLoader: { alignSelf: 'center', marginVertical: spacing.md },
+  proactiveText: { fontSize: 14, lineHeight: 22 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg },
+  sectionTitle: { ...typography.subtitle, fontSize: 18 },
+  addBtn: { paddingVertical: spacing.sm + 4, paddingHorizontal: spacing.lg, borderRadius: radius.lg },
+  addBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  pagination: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.md, marginTop: spacing.xl },
+  pageBtn: { paddingVertical: spacing.sm + 4, paddingHorizontal: spacing.lg, borderRadius: radius.lg },
+  pageNum: { fontWeight: '600', fontSize: 15 },
+  errorWrap: { padding: spacing.lg, borderRadius: radius.lg, marginTop: spacing.lg },
   errorText: { fontSize: 14 },
 });

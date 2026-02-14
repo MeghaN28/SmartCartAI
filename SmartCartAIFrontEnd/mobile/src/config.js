@@ -13,6 +13,7 @@ export const API = {
   demand: `${API_BASE}/api/demand`,
   all: `${API_BASE}/api/all`,
   suggestions: `${API_BASE}/api/suggestions`,
+  deleteSuggestion: (id) => `${API_BASE}/api/suggestions/${id}`,
   reorderLog: `${API_BASE}/api/reorder-log`, // Keep for backward compatibility
   purchaseUpload: `${API_BASE}/api/purchase/upload_bulk`,
   tts: `${API_BASE}/api/tts`,
@@ -21,6 +22,7 @@ export const API = {
     signalInventory: `${API_BASE}/api/agents/inventory/signal`,
     orchestrate: `${API_BASE}/api/agents/orchestrate`,
     chat: `${API_BASE}/api/agents/chat`,
+    proactive: `${API_BASE}/api/agents/proactive`,
     inventoryHealth: `${API_BASE}/api/agents/inventory/health`,
     orchestratorHealth: `${API_BASE}/api/agents/orchestrator/health`,
     chatHealth: `${API_BASE}/api/agents/chat/health`,

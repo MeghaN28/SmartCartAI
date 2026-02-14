@@ -34,6 +34,7 @@ DB_NAME = os.getenv("DB_NAME", "smartcart_ai")
 DB_USER = os.getenv("DB_USER", "meghanarendrasimha")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "Welcome@123")
 DECISION_ORCHESTRATOR_URL = os.getenv("DECISION_ORCHESTRATOR_URL", "http://localhost:9000")
+INVENTORY_AGENT_URL = os.getenv("INVENTORY_AGENT_URL", "http://localhost:9005")
 
 mcp = FastMCP("Chat Agent")
 app = Flask(__name__)
@@ -126,6 +127,99 @@ def get_items_by_name(search: str) -> List[Dict]:
         return items
     except Exception as e:
         logger.error(f"Error getting items by name: {e}")
+        return []
+
+
+def call_inventory_agent_query(query: str) -> Tuple[List[Dict], Optional[str]]:
+    """
+    Call the Inventory Agent with the user query. Inventory Agent sees the DB
+    (low stock, expired, near expiring, waste, etc.) and returns matching items.
+    Returns (items_list, error_message). On success error_message is None.
+    """
+    try:
+        response = requests.post(
+            f"{INVENTORY_AGENT_URL}/query",
+            json={"query": query},
+            timeout=10,
+        )
+        if not response.ok:
+            return [], f"Inventory agent returned {response.status_code}"
+        data = response.json()
+        items = data.get("items") or []
+        return items, None
+    except requests.exceptions.ConnectionError:
+        return [], "Inventory agent not reachable (is it running on port 9005?)"
+    except requests.exceptions.Timeout:
+        return [], "Inventory agent timed out"
+    except Exception as e:
+        return [], str(e)[:120]
+
+
+def get_out_of_stock_items(limit: int = 10) -> List[Dict]:
+    """Get items with zero or negative stock (out of stock)."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                SELECT inventory_id, item_name, category, opening_stock as remaining_stock,
+                       min_stock, max_capacity, vendor_id, expiry_date, selling_price
+                FROM inventory
+                WHERE opening_stock <= 0
+                ORDER BY opening_stock ASC
+                LIMIT %s
+            """, (limit,))
+        except Exception:
+            conn.rollback()
+            cur.execute("""
+                SELECT inventory_id, item_name, category, opening_stock as remaining_stock,
+                       min_stock, max_capacity, vendor_id
+                FROM inventory
+                WHERE opening_stock <= 0
+                ORDER BY opening_stock ASC
+                LIMIT %s
+            """, (limit,))
+        items = [dict(row) for row in cur.fetchall()]
+        cur.close()
+        conn.close()
+        return items
+    except Exception as e:
+        logger.error(f"Error getting out-of-stock items: {e}")
+        return []
+
+
+def get_overstock_items(limit: int = 10) -> List[Dict]:
+    """Get items with stock at or above 90%% of max_capacity (overstock)."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                SELECT inventory_id, item_name, category, opening_stock as remaining_stock,
+                       min_stock, max_capacity, vendor_id, expiry_date, selling_price
+                FROM inventory
+                WHERE max_capacity IS NOT NULL AND max_capacity > 0
+                  AND opening_stock >= max_capacity * 0.9
+                ORDER BY opening_stock DESC
+                LIMIT %s
+            """, (limit,))
+        except Exception:
+            conn.rollback()
+            cur.execute("""
+                SELECT inventory_id, item_name, category, opening_stock as remaining_stock,
+                       min_stock, max_capacity, vendor_id
+                FROM inventory
+                WHERE max_capacity IS NOT NULL AND max_capacity > 0
+                  AND opening_stock >= max_capacity * 0.9
+                ORDER BY opening_stock DESC
+                LIMIT %s
+            """, (limit,))
+        items = [dict(row) for row in cur.fetchall()]
+        cur.close()
+        conn.close()
+        return items
+    except Exception as e:
+        logger.error(f"Error getting overstock items: {e}")
         return []
 
 
@@ -222,8 +316,10 @@ def calculate_forecasted_demand(consumption_history: List[Dict]) -> float:
     return total_consumed / FORECAST_PAST_DAYS
 
 
-def call_decision_orchestrator(item: Dict) -> Tuple[Optional[Dict], Optional[str]]:
-    """Call the Decision Orchestrator Agent for an item. Returns (response_json, error_message)."""
+def call_decision_orchestrator(item: Dict, user_asked_about_waste: bool = False) -> Tuple[Optional[Dict], Optional[str]]:
+    """Call the Decision Orchestrator Agent for an item. Returns (response_json, error_message).
+    When user_asked_about_waste is True (e.g. 'What's going to waste?'), passes near_expiry intent
+    so the orchestrator can suggest discount / sell or donate soon."""
     try:
         consumption_history = get_consumption_history(item['inventory_id'])
         forecasted_demand = calculate_forecasted_demand(consumption_history)
@@ -239,11 +335,21 @@ def call_decision_orchestrator(item: Dict) -> Tuple[Optional[Dict], Optional[str
         else:
             stock_signal = "normal"
         
+        # For waste/expiry queries, tell the orchestrator so it can suggest discount or sell/donate
+        if user_asked_about_waste:
+            event_type = "near_expiry"
+            suggested_action = "none"
+            context = {"user_asked_about_waste": True}
+        else:
+            event_type = "low_stock" if stock_signal != "normal" else "monitoring"
+            suggested_action = "reorder" if stock_signal != "normal" else "none"
+            context = {}
+        
         payload = {
             "inventory_id": item['inventory_id'],
-            "event_type": "low_stock" if stock_signal != "normal" else "monitoring",
+            "event_type": event_type,
             "remaining_stock": remaining_stock,
-            "suggested_action": "reorder" if stock_signal != "normal" else "none",
+            "suggested_action": suggested_action,
             "stock_signal": stock_signal,
             "consumption_signal": "normal",
             "forecasted_demand": forecasted_demand,
@@ -257,7 +363,7 @@ def call_decision_orchestrator(item: Dict) -> Tuple[Optional[Dict], Optional[str
                 "selling_price": float(item.get('selling_price')) if item.get('selling_price') is not None else None,
             },
             "consumption_history": consumption_history[:10],
-            "context": {},
+            "context": context,
         }
         
         response = requests.post(f"{DECISION_ORCHESTRATOR_URL}/orchestrate", json=payload, timeout=15)
@@ -358,6 +464,109 @@ def _get_inventory_summary() -> Dict:
         return {"total_items": 0, "total_stock": 0, "low_stock_count": 0}
 
 
+def _format_recommendation_line(item_name: str, recommendation: Dict, include_reason: bool = True) -> str:
+    """Format a single recommendation for chat: action, discount %, bundle, discard + reason, explanation."""
+    rec = recommendation.get("recommendation", {})
+    action = rec.get("action", "none")
+    priority = rec.get("priority", "Medium")
+    reasoning = rec.get("reasoning", "")
+    parts = [f"• {item_name}: {action.upper()} ({priority} priority)"]
+    if reasoning:
+        parts.append(f" — {reasoning[:120]}" + ("..." if len(reasoning) > 120 else ""))
+    extras = []
+    if rec.get("suggested_discount_percent") is not None:
+        extras.append(f"Discount: {rec.get('suggested_discount_percent')}%")
+    if rec.get("suggested_selling_price") is not None:
+        extras.append(f"Sell at: {rec.get('suggested_selling_price')}")
+    if rec.get("bundle_suggestion"):
+        extras.append(f"Bundle: {rec.get('bundle_suggestion')}")
+    if rec.get("discard_reason"):
+        extras.append(f"Discard reason: {rec.get('discard_reason')}")
+    if rec.get("waste_action"):
+        extras.append(rec.get("waste_action"))
+    if extras:
+        parts.append(" | " + ", ".join(extras))
+    if include_reason:
+        explanation = recommendation.get("explanation", {})
+        if isinstance(explanation, dict) and explanation.get("explanation"):
+            parts.append(f" Reason: {(explanation.get('explanation') or '')[:150]}" + ("..." if len(explanation.get("explanation", "")) > 150 else ""))
+    return "".join(parts)
+
+
+def get_proactive_alert_items() -> Dict[str, List[Dict]]:
+    """Get all items that need proactive attention: waste/near expiry, out of stock, low stock, overstock."""
+    near_expiry = get_near_expiry_items(within_days=14)
+    out_of_stock = get_out_of_stock_items(limit=10)
+    low_stock = get_items_needing_attention("low stock")  # opening_stock <= min_stock
+    overstock = get_overstock_items(limit=10)
+    # Deduplicate: if an item is in out_of_stock, don't also list in low_stock
+    low_stock_ids = {i["inventory_id"] for i in low_stock}
+    out_ids = {i["inventory_id"] for i in out_of_stock}
+    low_stock = [i for i in low_stock if i["inventory_id"] not in out_ids]
+    return {
+        "near_expiry": near_expiry,
+        "out_of_stock": out_of_stock,
+        "low_stock": low_stock[:10],
+        "overstock": overstock,
+    }
+
+
+def process_proactive_summary(session_id: str = None) -> Dict:
+    """
+    Proactively analyze inventory and return a summary of what needs attention
+    (waste/near expiry, out of stock, low stock, overstock) with full recommendations:
+    hold, discount %, bundle, discard + reason, using the full decision pipeline.
+    """
+    alerts = get_proactive_alert_items()
+    near_expiry = alerts["near_expiry"]
+    out_of_stock = alerts["out_of_stock"]
+    low_stock = alerts["low_stock"]
+    overstock = alerts["overstock"]
+
+    total_issues = len(near_expiry) + len(out_of_stock) + len(low_stock) + len(overstock)
+    if total_issues == 0:
+        summary = _get_inventory_summary()
+        return {
+            "answer": "Everything looks good right now. No items are near expiry, out of stock, low stock, or overstock. "
+            + f"You have {summary.get('total_items', 0)} item(s) in inventory. Ask me to check inventory or suggest actions anytime.",
+            "suggestions_count": 0,
+        }
+
+    lines = ["Here's what needs your attention right now:\n"]
+
+    # Process up to 2 items per category through the full decision pipeline (subagents: risk, feasibility, cost, explanation)
+    categories = [
+        ("Waste / Near expiry", near_expiry[:2], True),   # user_asked_about_waste=True
+        ("Out of stock", out_of_stock[:2], False),
+        ("Low stock", low_stock[:2], False),
+        ("Overstock", overstock[:2], False),
+    ]
+    suggestions_saved = 0
+    for label, items, waste_intent in categories:
+        if not items:
+            continue
+        lines.append(f"**{label}**")
+        for item in items:
+            rec, err = call_decision_orchestrator(item, user_asked_about_waste=waste_intent)
+            if err:
+                lines.append(f"• {item.get('item_name', 'Item')}: Could not get recommendation — {err}")
+                continue
+            if rec:
+                sid = save_suggestion("Proactive alert", item, rec)
+                if sid:
+                    suggestions_saved += 1
+                lines.append(_format_recommendation_line(item.get("item_name", "Item"), rec, include_reason=True))
+        lines.append("")
+
+    if suggestions_saved > 0:
+        lines.append(f"✅ {suggestions_saved} suggestion(s) saved. Check the Suggestions tab for details.")
+
+    return {
+        "answer": "\n".join(lines).replace("**", "").strip(),  # plain text for chat
+        "suggestions_count": suggestions_saved,
+    }
+
+
 def process_chat_query(query: str, session_id: str = None) -> Dict:
     """Process a chat query: check inventory, call decision agent, store suggestions."""
     query_lower = query.lower().strip()
@@ -376,37 +585,38 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
     if waste_trigger:
         should_generate_suggestions = True
 
-    # Get items that need attention (or all items for "check")
-    items = get_items_needing_attention(query)
+    # Get items from Inventory Agent (single place that sees DB for user query).
+    # Fall back to local DB if Inventory Agent is unavailable.
+    items, inv_err = call_inventory_agent_query(query)
+    if inv_err and (should_generate_suggestions or waste_trigger):
+        logger.warning(f"Inventory agent unavailable ({inv_err}), using local DB fallback")
 
-    # Waste/expiry flow: get near-expiry items (next 14 days)
-    if waste_trigger:
-        near_expiry = get_near_expiry_items(within_days=14)
-        if near_expiry:
-            items = near_expiry
-        else:
-            items = []  # Don't show low-stock suggestions when user asked about waste/expiry
-
-    # If query looks like an item name (e.g. "apple") and we got no items, look up by name
-    if not items and len(query_tokens) <= 3 and query_tokens:
-        items_by_name = get_items_by_name(query.strip())
-        if items_by_name:
-            items = items_by_name
-            should_generate_suggestions = True
-
-    # "Check X and suggest" / "suggest for X": try to find item by name when we have a likely item word
-    if should_generate_suggestions and not items and len(query_tokens) >= 2:
-        stopwords = {
-            "check", "inventory", "and", "suggest", "actions", "what", "items", "need",
-            "reorder", "for", "my", "the", "me", "please", "analyze", "give", "recommendations",
-            "going", "waste", "sell", "donate", "soon", "anything", "should", "to",
-        }
-        for token in query_tokens:
-            if len(token) > 2 and token.lower() not in stopwords:
-                items_by_name = get_items_by_name(token)
-                if items_by_name:
-                    items = items_by_name
-                    break
+    if not items and inv_err:
+        # Fallback: Chat Agent queries DB locally (same logic as Inventory Agent)
+        items = get_items_needing_attention(query)
+        if waste_trigger:
+            near_expiry = get_near_expiry_items(within_days=14)
+            if near_expiry:
+                items = near_expiry
+            else:
+                items = []
+        if not items and len(query_tokens) <= 3 and query_tokens:
+            items_by_name = get_items_by_name(query.strip())
+            if items_by_name:
+                items = items_by_name
+                should_generate_suggestions = True
+        if should_generate_suggestions and not items and len(query_tokens) >= 2:
+            stopwords = {
+                "check", "inventory", "and", "suggest", "actions", "what", "items", "need",
+                "reorder", "for", "my", "the", "me", "please", "analyze", "give", "recommendations",
+                "going", "waste", "sell", "donate", "soon", "anything", "should", "to",
+            }
+            for token in query_tokens:
+                if len(token) > 2 and token.lower() not in stopwords:
+                    items_by_name = get_items_by_name(token)
+                    if items_by_name:
+                        items = items_by_name
+                        break
     
     suggestions_generated = []
     answer_parts = []
@@ -416,10 +626,10 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
         answer_parts.append("Here are my recommendations:\n")
         errors = []
 
-        # Process each item through decision orchestrator
+        # Process each item through decision orchestrator (pass waste intent for waste/expiry queries)
         for item in items[:10]:  # Limit to 10 items
             try:
-                recommendation, err = call_decision_orchestrator(item)
+                recommendation, err = call_decision_orchestrator(item, user_asked_about_waste=waste_trigger)
                 if err:
                     errors.append(f"{item.get('item_name', item.get('inventory_id', '?'))}: {err}")
                     answer_parts.append(f"• {item.get('item_name', 'Item')}: Could not get recommendation — {err}")
@@ -434,11 +644,7 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                             "priority": recommendation.get('recommendation', {}).get('priority', 'Medium'),
                             "suggestion_id": suggestion_id
                         })
-                        rec = recommendation.get('recommendation', {})
-                        answer_parts.append(
-                            f"• {item['item_name']}: {rec.get('action', 'none').upper()} "
-                            f"({rec.get('priority', 'Medium')} priority) - {rec.get('reasoning', '')[:100]}"
-                        )
+                        answer_parts.append(_format_recommendation_line(item['item_name'], recommendation, include_reason=True))
                     else:
                         errors.append(f"{item.get('item_name')}: Failed to save suggestion to database.")
                 else:
@@ -527,6 +733,27 @@ def chat_endpoint():
     except Exception as e:
         logger.error(f"Chat processing error: {e}")
         return jsonify({"error": str(e), "answer": "I'm sorry, I encountered an error processing your request."}), 500
+
+
+@app.route("/proactive", methods=["POST", "GET"])
+def proactive_endpoint():
+    """Proactive summary: waste/near expiry, out of stock, low stock, overstock with full recommendations (hold, discount %%, bundle, discard + reason)."""
+    payload = request.get_json(silent=True) or {}
+    session_id = payload.get("session_id")
+    try:
+        result = process_proactive_summary(session_id)
+        return jsonify({
+            "answer": result["answer"],
+            "suggestions_count": result.get("suggestions_count", 0),
+            "session_id": session_id,
+            "timestamp": datetime.now().isoformat(),
+        }), 200
+    except Exception as e:
+        logger.error(f"Proactive summary error: {e}")
+        return jsonify({
+            "error": str(e),
+            "answer": "I couldn't load proactive alerts right now. Try asking 'Check inventory and suggest actions'.",
+        }), 500
 
 
 @app.route("/health", methods=["GET"])

@@ -18,10 +18,12 @@ export default function LowStockAlerts({ lowStockAlerts }) {
               style={[
                 styles.card,
                 { backgroundColor: c.card, borderLeftColor: c.warning, borderColor: c.border },
-                shadows.sm,
+                shadows.card,
               ]}
             >
-              <Text style={styles.icon}>⚠️</Text>
+              <View style={[styles.iconWrap, { backgroundColor: c.warning + '22' }]}>
+                <Text style={styles.icon}>⚠️</Text>
+              </View>
               <View style={styles.cardContent}>
                 <Text style={[styles.name, { color: c.text }]}>{item.name}</Text>
                 <Text style={[styles.details, { color: c.textSecondary }]}>
@@ -42,24 +44,32 @@ export default function LowStockAlerts({ lowStockAlerts }) {
 
 const styles = StyleSheet.create({
   section: { marginBottom: spacing.lg },
-  title: { ...typography.subtitle, marginBottom: spacing.sm },
-  grid: { gap: spacing.sm },
+  title: { ...typography.subtitle, marginBottom: spacing.md },
+  grid: { gap: spacing.md },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderLeftWidth: 4,
-  },
-  icon: { fontSize: 22, marginRight: spacing.sm },
-  cardContent: { flex: 1 },
-  name: { fontWeight: '600', fontSize: 15 },
-  details: { fontSize: 12, marginTop: 2 },
-  empty: {
     padding: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderLeftWidth: 5,
+  },
+  iconWrap: {
+    width: 44,
+    height: 44,
     borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  icon: { fontSize: 22 },
+  cardContent: { flex: 1 },
+  name: { fontWeight: '600', fontSize: 16 },
+  details: { fontSize: 13, marginTop: 4 },
+  empty: {
+    padding: spacing.xl,
+    borderRadius: radius.lg,
     borderWidth: 1,
   },
-  noAlerts: { fontSize: 14, fontStyle: 'italic', textAlign: 'center' },
+  noAlerts: { fontSize: 15, fontStyle: 'italic', textAlign: 'center' },
 });

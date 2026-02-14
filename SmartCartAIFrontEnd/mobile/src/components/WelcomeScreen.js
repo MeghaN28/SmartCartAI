@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
-import { colors, spacing, radius, typography } from '../theme';
+import { colors, spacing, radius, typography, shadows } from '../theme';
 
 export default function WelcomeScreen({ quickQuestions, handleQuickQuestion }) {
   const { theme } = useTheme();
@@ -9,7 +9,7 @@ export default function WelcomeScreen({ quickQuestions, handleQuickQuestion }) {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.iconWrap, { backgroundColor: c.primary + '18' }]}>
+      <View style={[styles.iconWrap, { backgroundColor: c.primary + '20' }]}>
         <Text style={styles.emoji}>💬</Text>
       </View>
       <Text style={[styles.title, { color: c.text }]}>SmartCartAI Assistant</Text>
@@ -21,9 +21,9 @@ export default function WelcomeScreen({ quickQuestions, handleQuickQuestion }) {
         {quickQuestions.map((q, i) => (
           <TouchableOpacity
             key={i}
-            style={[styles.suggestion, { backgroundColor: c.card, borderColor: c.border }]}
+            style={[styles.suggestion, { backgroundColor: c.card, borderColor: c.border }, shadows.sm]}
             onPress={() => handleQuickQuestion(q)}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
             <Text style={[styles.suggestionText, { color: c.text }]}>{q}</Text>
           </TouchableOpacity>
@@ -36,22 +36,22 @@ export default function WelcomeScreen({ quickQuestions, handleQuickQuestion }) {
 const styles = StyleSheet.create({
   container: { alignItems: 'center', padding: spacing.xl },
   iconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.lg,
   },
-  emoji: { fontSize: 36 },
-  title: { ...typography.title, marginBottom: spacing.xs },
-  subtitle: { fontSize: 15, textAlign: 'center', marginBottom: spacing.lg, lineHeight: 22 },
+  emoji: { fontSize: 40 },
+  title: { ...typography.title, marginBottom: spacing.sm, textAlign: 'center' },
+  subtitle: { fontSize: 16, textAlign: 'center', marginBottom: spacing.xl, lineHeight: 24, paddingHorizontal: spacing.lg },
   promptLabel: { ...typography.label, alignSelf: 'flex-start', marginBottom: spacing.sm },
-  grid: { width: '100%', gap: spacing.sm },
+  grid: { width: '100%', gap: spacing.md },
   suggestion: {
-    padding: spacing.md + 2,
-    borderRadius: radius.md,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
     borderWidth: 1,
   },
-  suggestionText: { fontSize: 14, textAlign: 'left', lineHeight: 20 },
+  suggestionText: { fontSize: 15, textAlign: 'left', lineHeight: 22 },
 });

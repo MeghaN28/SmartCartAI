@@ -14,6 +14,7 @@ export default function InventoryTable({
   handleSaveEdit,
   handleCancelEdit,
   handleDelete,
+  onRecommend,
 }) {
   const { theme } = useTheme();
   const c = colors[theme] || colors.dark;
@@ -76,7 +77,12 @@ export default function InventoryTable({
                 <Text style={[styles.badgeText, { color: c.text }]}>{statusLabel(getStockStatus(item))}</Text>
               </View>
               <View style={styles.actions}>
-                <TouchableOpacity style={[styles.actionBtn, { backgroundColor: c.primary }]} onPress={() => handleEdit(item)}>
+                {onRecommend && (
+                  <TouchableOpacity style={[styles.actionBtn, { backgroundColor: c.primary }]} onPress={() => onRecommend(item)}>
+                    <Text style={styles.actionBtnText}>Recommend</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={[styles.actionBtn, { backgroundColor: c.textSecondary }]} onPress={() => handleEdit(item)}>
                   <Text style={styles.actionBtnText}>Edit</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.actionBtn, { backgroundColor: c.danger }]} onPress={() => handleDelete(item.id)}>
@@ -92,15 +98,15 @@ export default function InventoryTable({
 }
 
 const styles = StyleSheet.create({
-  container: { gap: spacing.sm },
-  row: { padding: spacing.md, borderRadius: radius.md, borderWidth: 1 },
-  input: { borderWidth: 1, borderRadius: radius.sm, padding: spacing.sm, marginBottom: spacing.sm },
-  catRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: spacing.sm },
-  catBtn: { paddingVertical: 4, paddingHorizontal: 8, borderRadius: 4 },
-  cell: { fontSize: 14, marginBottom: 2 },
-  badge: { paddingVertical: 2, paddingHorizontal: 6, borderRadius: 4, alignSelf: 'flex-start', marginVertical: 4 },
-  badgeText: { fontSize: 12 },
-  actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
-  actionBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: radius.sm },
-  actionBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  container: { gap: spacing.md },
+  row: { padding: spacing.lg, borderRadius: radius.lg, borderWidth: 1 },
+  input: { borderWidth: 1.5, borderRadius: radius.md, padding: spacing.sm + 2, marginBottom: spacing.sm },
+  catRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm },
+  catBtn: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.sm },
+  cell: { fontSize: 15, marginBottom: 4 },
+  badge: { paddingVertical: 4, paddingHorizontal: 8, borderRadius: radius.sm, alignSelf: 'flex-start', marginVertical: 4 },
+  badgeText: { fontSize: 12, fontWeight: '600' },
+  actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+  actionBtn: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: radius.md },
+  actionBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
 });

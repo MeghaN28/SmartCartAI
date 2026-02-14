@@ -52,4 +52,14 @@ public class SuggestionController {
                 })
                 .orElse(ResponseEntity.notFound().build());
     }
+
+    @DeleteMapping("/{id}")
+    @Operation(summary = "Delete a suggestion by ID")
+    public ResponseEntity<Map<String, Object>> deleteById(@PathVariable Integer id) {
+        if (!repository.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        repository.deleteById(id);
+        return ResponseEntity.ok(Map.of("deleted", true, "id", id));
+    }
 }

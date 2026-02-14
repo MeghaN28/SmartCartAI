@@ -5,13 +5,16 @@ This guide explains how to set up and run the Inventory Monitoring Agent and Dec
 ## Overview
 
 The system consists of:
-1. **Inventory Monitoring Agent** - Continuously monitors PostgreSQL and signals flagged items
-2. **Decision Orchestrator Agent** - Coordinates subagents to produce prescriptive recommendations
-3. **Subagents**:
+1. **Chat Agent** (user-facing) – Open endpoint where the user interacts. Calls the Inventory Agent with the user query, then the Decision Orchestrator per item; returns the answer to the user and saves suggestions to the Suggestion tab.
+2. **Inventory Monitoring Agent** – Sees the database for the user query (low stock, expired, near expiring, waste, etc.). Exposes `POST /query` for the Chat Agent and `POST /inventory` for events; can send signals to the Decision Orchestrator.
+3. **Decision Orchestrator Agent** – Receives signals (per item) and coordinates subagents to produce prescriptive recommendations.
+4. **Subagents**:
    - Risk Assessment Agent
    - Feasibility Agent
    - Cost & Operational Impact Agent
-   - Explanation Generation Agent
+   - Explanation Generation Agent (produces the final explanation shown to the user and stored in the Suggestion tab)
+
+**Request flow:** User → Chat Agent → Inventory Agent (DB query) → items back to Chat → for each item: Decision Orchestrator → Risk → Feasibility → Cost Impact → Explanation → recommendation + explanation back to Chat → user reply + Suggestion tab.
 
 ## Prerequisites
 

@@ -133,6 +133,22 @@ public class AgentController {
         }
     }
 
+    @PostMapping("/proactive")
+    @Operation(summary = "Get proactive inventory alerts (waste, out of stock, low stock, overstock) with recommendations")
+    public ResponseEntity<Map<String, Object>> proactive(@RequestBody(required = false) Map<String, Object> payload) {
+        try {
+            String url = CHAT_AGENT_URL + "/proactive";
+            Map<String, Object> body = payload != null ? payload : new HashMap<>();
+            Map<String, Object> response = restTemplate.postForObject(url, body, Map.class);
+            return ResponseEntity.ok(response != null ? response : new HashMap<>());
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            error.put("answer", "Proactive alerts are unavailable. Try asking 'Check inventory and suggest actions'.");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
     @GetMapping("/chat/health")
     @Operation(summary = "Check Chat Agent health")
     public ResponseEntity<Map<String, Object>> checkChatAgentHealth() {
