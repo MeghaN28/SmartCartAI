@@ -65,6 +65,14 @@ EXPLANATION_PID=$!
 echo -e "${GREEN}Explanation Agent started (PID: $EXPLANATION_PID)${NC}"
 cd ../../../../
 
+# Start Food Bank Agent (port 9007) – nearest food banks for donate/discard suggestions
+cd Agents/decision-orchestration-agent/subagents/food-bank
+export PORT=9007
+nohup python3 agent.py >> ../../../../logs/food-bank.log 2>&1 &
+FOODBANK_PID=$!
+echo -e "${GREEN}Food Bank Agent started (PID: $FOODBANK_PID)${NC}"
+cd ../../../../
+
 # Start Chat Agent (port 9006)
 cd Agents/decision-orchestration-agent/subagents/chat
 export PORT=9006
@@ -104,6 +112,7 @@ echo "$RISK_PID" > logs/risk-assessment.pid
 echo "$FEASIBILITY_PID" > logs/feasibility.pid
 echo "$COST_PID" > logs/cost-impact.pid
 echo "$EXPLANATION_PID" > logs/explanation.pid
+echo "$FOODBANK_PID" > logs/food-bank.pid
 echo "$CHAT_PID" > logs/chat-agent.pid
 echo "$ORCHESTRATOR_PID" > logs/orchestrator.pid
 echo "$INVENTORY_PID" > logs/inventory-agent.pid
@@ -116,6 +125,7 @@ echo "  - Risk Assessment:     http://localhost:9004/health"
 echo "  - Feasibility:         http://localhost:9001/health"
 echo "  - Cost Impact:          http://localhost:9002/health"
 echo "  - Explanation:         http://localhost:9003/health"
+echo "  - Food Bank:            http://localhost:9007/health"
 echo "  - Chat Agent:           http://localhost:9006/health"
 echo "  - Decision Orchestrator: http://localhost:9000/health"
 echo "  - Inventory Monitoring:  http://localhost:9005/health"

@@ -113,8 +113,13 @@ def assess_cost_impact(inventory_id: str, suggested_action: str, item_data: Dict
             within_budget = False
             warnings.append(f"Order cost (${estimated_cost:.2f}) exceeds max order limit (${MAX_ORDER_COST:.2f})")
         
-        # Check margin (if selling price available)
-        selling_price = context.get("selling_price")
+        # Check margin (if selling price available from context or item_data)
+        selling_price = context.get("selling_price") or item_data.get("selling_price")
+        try:
+            if selling_price is not None:
+                selling_price = float(selling_price)
+        except (TypeError, ValueError):
+            selling_price = None
         if selling_price and unit_cost:
             margin_percent = ((selling_price - unit_cost) / selling_price) * 100
             if margin_percent < MIN_MARGIN_PERCENT:

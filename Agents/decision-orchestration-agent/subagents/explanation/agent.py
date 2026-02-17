@@ -54,8 +54,10 @@ if MISTRAL_API_KEY:
 
 def generate_explanation(inventory_id: str, suggested_action: str, risk_assessment: Dict,
                         feasibility_check: Dict, cost_impact: Dict, item_data: Dict,
-                        forecasted_demand: float, context: Dict) -> Dict:
+                        forecasted_demand: float, context: Dict,
+                        nearest_food_banks: list = None) -> Dict:
     """Generate human-readable explanation for the recommendation."""
+    nearest_food_banks = nearest_food_banks or []
     
     item_name = item_data.get("item_name", "Unknown Item")
     risk_level = risk_assessment.get("risk_level", "unknown")
@@ -64,6 +66,19 @@ def generate_explanation(inventory_id: str, suggested_action: str, risk_assessme
     constraints = feasibility_check.get("constraints", [])
     estimated_cost = cost_impact.get("estimated_cost", 0)
     within_budget = cost_impact.get("within_budget", True)
+    
+    # Donation hint when we have nearest food banks (discard / donate flow)
+    donation_line = ""
+    if nearest_food_banks:
+        parts = []
+        for fb in nearest_food_banks[:3]:
+            name = fb.get("name", "")
+            addr = fb.get("address") or f"{fb.get('city', '')}, {fb.get('state', '')} {fb.get('zip', '')}".strip(", ")
+            dist = fb.get("distance_mi")
+            if name:
+                parts.append(f"{name}" + (f" ({addr})" if addr else "") + (f" — {dist} mi" if dist is not None else ""))
+        if parts:
+            donation_line = "\nNearest food banks for donation: " + "; ".join(parts)
     
     # Prepare context for explanation
     context_text = f"""
@@ -84,6 +99,7 @@ Feasibility:
 Cost Impact:
 - Estimated Cost: ${estimated_cost:.2f}
 - Within Budget: {within_budget}
+{donation_line}
 """
     
     if llm:
@@ -94,7 +110,8 @@ Provide a clear, concise, and actionable explanation that covers:
 1. Why this action is recommended
 2. What risks are being addressed
 3. What the expected outcome is
-4. Any important considerations or constraints
+4. Any important considerations or constraints (cost, margin, budget)
+5. If the context includes "Nearest food banks for donation", mention that the store can donate to those nearby locations.
 
 Write in a professional but accessible tone. Keep it under 200 words.
 IMPORTANT: Output plain text only. Do not use markdown: no asterisks for bold, no hashtags for headers, no bullet markdown. The text will be shown in the chat and in the suggestion tab as-is."""),
@@ -139,6 +156,11 @@ IMPORTANT: Output plain text only. Do not use markdown: no asterisks for bold, n
     
     explanation_parts.append(f"Taking this action will help maintain optimal inventory levels and prevent stockouts.")
     
+    if nearest_food_banks:
+        fb_lines = [f"{fb.get('name', '')} ({fb.get('address', '')}) — {fb.get('distance_mi', '')} mi" for fb in nearest_food_banks[:3] if fb.get("name")]
+        if fb_lines:
+            explanation_parts.append("Consider donating to: " + "; ".join(fb_lines))
+    
     return {
         "explanation": strip_markdown(" ".join(explanation_parts)),
         "llm_generated": False,
@@ -159,6 +181,7 @@ def explain_endpoint():
     item_data = payload.get("item_data", {})
     forecasted_demand = payload.get("forecasted_demand", 0.0)
     context = payload.get("context", {})
+    nearest_food_banks = payload.get("nearest_food_banks", [])
     
     if not inventory_id:
         return jsonify({"error": "inventory_id required"}), 400
@@ -166,7 +189,7 @@ def explain_endpoint():
     result = generate_explanation(
         inventory_id, suggested_action, risk_assessment,
         feasibility_check, cost_impact, item_data,
-        forecasted_demand, context
+        forecasted_demand, context, nearest_food_banks
     )
     return jsonify(result), 200
 

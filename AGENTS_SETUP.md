@@ -12,9 +12,10 @@ The system consists of:
    - Risk Assessment Agent
    - Feasibility Agent
    - Cost & Operational Impact Agent
+   - **Food Bank Agent** (finds nearest food banks for donate/discard suggestions; optional)
    - Explanation Generation Agent (produces the final explanation shown to the user and stored in the Suggestion tab)
 
-**Request flow:** User → Chat Agent → Inventory Agent (DB query) → items back to Chat → for each item: Decision Orchestrator → Risk → Feasibility → Cost Impact → Explanation → recommendation + explanation back to Chat → user reply + Suggestion tab.
+**Request flow:** User → Chat Agent → Inventory Agent (DB query) → items back to Chat → for each item: Decision Orchestrator → Risk → Feasibility → Cost Impact → (Food Bank when discard/donate) → Explanation → recommendation + explanation back to Chat → user reply + Suggestion tab.
 
 ## Prerequisites
 
@@ -33,6 +34,10 @@ createdb -U meghanarendrasimha smartcart_ai
 
 # Run schema
 psql -U meghanarendrasimha -d smartcart_ai < database/schema.sql
+
+# Run migrations (facility, food_banks, suggestions.donation_info)
+psql -U meghanarendrasimha -d smartcart_ai -f database/migrations/add_facility_food_banks_donation.sql
+# Optional: add_expiry_and_price.sql, add_suggestion_discount_waste.sql if not already applied
 
 # Import sample data (optional)
 psql -U meghanarendrasimha -d smartcart_ai -c "\copy inventory FROM 'Dataset/inventory_master_50_unique.csv' CSV HEADER"

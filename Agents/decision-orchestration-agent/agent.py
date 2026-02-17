@@ -47,6 +47,7 @@ SUBAGENT_URLS = {
     "feasibility": os.getenv("FEASIBILITY_AGENT_URL", "http://localhost:9001/feasibility"),
     "cost_impact": os.getenv("COST_IMPACT_AGENT_URL", "http://localhost:9002/cost-impact"),
     "explanation": os.getenv("EXPLANATION_AGENT_URL", "http://localhost:9003/explain"),
+    "food_bank": os.getenv("FOOD_BANK_AGENT_URL", "http://localhost:9007/nearest"),
 }
 
 # MCP Server
@@ -86,6 +87,7 @@ class DecisionOrchestratorState(TypedDict, total=False):
     risk_assessment: dict
     feasibility_check: dict
     cost_impact: dict
+    nearest_food_banks: List[dict]  # when discard/donate: for donation suggestion
     explanation: dict
     
     # Final Output
@@ -264,6 +266,78 @@ def retrieve_historical_context(inventory_id: str) -> Dict:
         return {"inventory": {}, "consumption": [], "sales": []}
 
 
+def retrieve_bundle_candidates(inventory_id: str, item_data: Dict, limit: int = 10) -> List[Dict]:
+    """Retrieve other inventory items that can be bundled with this item (same category, form, or use)."""
+    try:
+        category = (item_data.get("category") or "").strip()
+        form = (item_data.get("form") or "").strip()
+        use = (item_data.get("use") or "").strip()
+        conn = get_db_connection()
+        cur = conn.cursor()
+        # Get other items: same category, or same form, or same use; has stock; exclude self
+        conditions = ["inventory_id != %s", "COALESCE(opening_stock, 0) > 0"]
+        args = [inventory_id]
+        if category or form or use:
+            parts = []
+            if category:
+                parts.append("(category IS NOT NULL AND TRIM(category) = %s)")
+                args.append(category)
+            if form:
+                parts.append("(form IS NOT NULL AND TRIM(form) = %s)")
+                args.append(form)
+            if use:
+                parts.append("(\"use\" IS NOT NULL AND TRIM(\"use\") = %s)")
+                args.append(use)
+            if parts:
+                conditions.append("(" + " OR ".join(parts) + ")")
+        cur.execute(
+            """
+            SELECT inventory_id, item_name, category, form, "use", opening_stock
+            FROM inventory
+            WHERE """ + " AND ".join(conditions) + """
+            ORDER BY
+                CASE WHEN category IS NOT NULL AND TRIM(category) = %s THEN 0 ELSE 1 END,
+                CASE WHEN form IS NOT NULL AND TRIM(form) = %s THEN 0 ELSE 1 END,
+                COALESCE(opening_stock, 0) DESC
+            LIMIT %s
+            """,
+            args + [category, form, limit],
+        )
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"Error retrieving bundle candidates: {e}")
+        return []
+
+
+def compute_discount_from_expiry(
+    days_until_expiry: Optional[int], selling_price: Optional[float]
+) -> tuple:
+    """Compute suggested discount % and selling price from days until expiry. Returns (discount_percent, suggested_price)."""
+    if days_until_expiry is None:
+        return 0, (float(selling_price) if selling_price is not None else None)
+    try:
+        sp = float(selling_price) if selling_price is not None else None
+    except (TypeError, ValueError):
+        sp = None
+    if days_until_expiry > 14:
+        pct = 0
+    elif days_until_expiry >= 7:
+        pct = 10
+    elif days_until_expiry >= 4:
+        pct = 15
+    elif days_until_expiry >= 1:
+        pct = 25
+    else:
+        pct = 40  # expiry today or past
+    if sp is not None and sp > 0:
+        suggested = round(sp * (1 - pct / 100.0), 2)
+        return pct, suggested
+    return pct, None
+
+
 # -----------------------------------------------------------------------------
 # Graph Nodes
 # -----------------------------------------------------------------------------
@@ -320,12 +394,16 @@ def assess_cost_impact(state: DecisionOrchestratorState) -> dict:
     inv_id = state.get("inventory_id", "?")
     item_name = (state.get("item_data") or {}).get("item_name", "?")
     logger.info("[Subagent] Calling Cost Impact | item=%s | inventory_id=%s", item_name, inv_id)
+    item_data = state.get("item_data", {})
+    context = dict(state.get("context", {}))
+    context.setdefault("selling_price", item_data.get("selling_price"))
+    context.setdefault("remaining_stock", state.get("remaining_stock"))
     payload = {
         "inventory_id": state.get("inventory_id"),
         "suggested_action": state.get("suggested_action"),
-        "item_data": state.get("item_data", {}),
+        "item_data": item_data,
         "forecasted_demand": state.get("forecasted_demand"),
-        "context": state.get("context", {}),
+        "context": context,
     }
     
     try:
@@ -336,6 +414,28 @@ def assess_cost_impact(state: DecisionOrchestratorState) -> dict:
         cost_impact = {"error": str(e), "estimated_cost": 0, "within_budget": True}
     
     return {"cost_impact": cost_impact}
+
+
+def get_donation_options(state: DecisionOrchestratorState) -> dict:
+    """Call Food Bank subagent when action is discard or user asked about waste/donate."""
+    suggested_action = state.get("suggested_action", "")
+    event_type = state.get("event_type", "")
+    user_asked_about_waste = (state.get("context") or {}).get("user_asked_about_waste", False)
+    should_fetch = (
+        suggested_action == "discard"
+        or event_type == "near_expiry"
+        or user_asked_about_waste
+    )
+    if not should_fetch:
+        return {"nearest_food_banks": []}
+    try:
+        r = requests.post(SUBAGENT_URLS["food_bank"], json={"limit": 5}, timeout=5)
+        if r.ok:
+            data = r.json()
+            return {"nearest_food_banks": data.get("nearest_food_banks", [])}
+    except Exception as e:
+        logger.warning(f"Food bank lookup failed: {e}")
+    return {"nearest_food_banks": []}
 
 
 def generate_explanation(state: DecisionOrchestratorState) -> dict:
@@ -352,6 +452,7 @@ def generate_explanation(state: DecisionOrchestratorState) -> dict:
         "item_data": state.get("item_data", {}),
         "forecasted_demand": state.get("forecasted_demand"),
         "context": state.get("context", {}),
+        "nearest_food_banks": state.get("nearest_food_banks", []),
     }
     
     try:
@@ -369,6 +470,14 @@ def synthesize_recommendation(state: DecisionOrchestratorState) -> dict:
     inventory_id = state.get("inventory_id", "")
     historical_context = retrieve_historical_context(inventory_id)
     similar_items = retrieve_similar_items_by_embedding(inventory_id, limit=5)
+    item_data = state.get("item_data", {})
+
+    # Bundle candidates: other items from inventory (same category/form/use) for exact bundle suggestion
+    bundle_candidates = retrieve_bundle_candidates(inventory_id, item_data, limit=10)
+    bundle_candidates_text = "None available."
+    if bundle_candidates:
+        lines = [f"  - {c.get('item_name', '?')} (category: {c.get('category') or 'N/A'}, form: {c.get('form') or 'N/A'}, use: {c.get('use') or 'N/A'}, stock: {c.get('opening_stock', 0)})" for c in bundle_candidates]
+        bundle_candidates_text = "\n".join(lines)
 
     # Format similar-items evidence (embedding-based)
     similar_text = "None available."
@@ -387,7 +496,6 @@ def synthesize_recommendation(state: DecisionOrchestratorState) -> dict:
             lines.append(f"  - {name} (similarity {sim}, stock {stock}/min {min_s}): {past_str}")
         similar_text = "\n".join(lines) if lines else "None available."
 
-    item_data = state.get("item_data", {})
     expiry_date = item_data.get("expiry_date") or (historical_context.get("inventory") or {}).get("expiry_date")
     selling_price = item_data.get("selling_price") or (historical_context.get("inventory") or {}).get("selling_price")
     days_until_expiry = None
@@ -399,6 +507,10 @@ def synthesize_recommendation(state: DecisionOrchestratorState) -> dict:
         except Exception:
             days_until_expiry = None
 
+    # Rule-based discount and selling price from days until expiry (for exact suggestion)
+    discount_pct, computed_suggested_price = compute_discount_from_expiry(days_until_expiry, selling_price)
+    discount_hint = f"Rule-based discount from expiry: {discount_pct}%. Suggested selling price: ${computed_suggested_price}" if computed_suggested_price is not None else f"Rule-based discount from expiry: {discount_pct}%."
+
     # Signal to LLM when user asked about waste/expiry so it suggests discount or sell/donate
     user_asked_about_waste = (
         state.get("event_type") == "near_expiry"
@@ -406,7 +518,7 @@ def synthesize_recommendation(state: DecisionOrchestratorState) -> dict:
     )
     waste_hint = "\nUser asked about waste/expiry (e.g. 'What's going to waste?'): Yes. Prefer suggesting discount or 'sell or donate soon' to reduce waste." if user_asked_about_waste else ""
 
-    # Prepare context for LLM (include expiry and price for waste/price optimization)
+    # Prepare context for LLM (include expiry, price, bundle candidates, rule-based discount)
     context_text = f"""
 Inventory Item: {item_data.get('item_name', 'Unknown')}
 Current Stock: {state.get('remaining_stock', 0)}
@@ -417,8 +529,12 @@ Consumption Signal: {state.get('consumption_signal', 'unknown')}
 Expiry Date: {expiry_date or 'Not set'}
 Days until expiry: {days_until_expiry if days_until_expiry is not None else 'N/A'}
 Selling Price: {selling_price if selling_price is not None else 'Not set'}
+{discount_hint}
 Event type: {state.get('event_type', 'unknown')}
 {waste_hint}
+
+Bundle candidates (from inventory – same or complementary category/form/use; use ONLY these item names in bundle_suggestion):
+{bundle_candidates_text}
 
 Risk Assessment: {state.get('risk_assessment', {})}
 Feasibility: {state.get('feasibility_check', {})}
@@ -436,9 +552,12 @@ Similar items (embedding-based) and their past recommendations (use as evidence)
             prompt = ChatPromptTemplate.from_messages([
                 ("system", """You are an expert inventory management advisor. Give a strong, prescriptive recommendation that is evidence-based and actionable.
 
-Use: risk, feasibility, cost, historical consumption and sales, and similar-item evidence. If expiry date is near (e.g. within 7-14 days), consider suggesting discount or "sell or donate soon" to reduce waste. If selling price is available and stock is high, you may suggest a small discount to move inventory.
+Use: risk, feasibility, cost, historical consumption and sales, and similar-item evidence. If expiry date is near (e.g. within 7-14 days), consider suggesting discount or "sell or donate soon" to reduce waste.
 
-When suggesting discounts or waste reduction, also provide: (1) what percentage discount to give (0-50), (2) what price to sell at if you have current selling price, (3) whether to bundle with other items and with what (e.g. "Bundle with yogurt and granola").
+DISCOUNT AND BUNDLE RULES (follow exactly):
+1. suggested_discount_percent: Use the "Rule-based discount from expiry" value from the context, or a value very close to it (0-50). Do not invent a random percentage.
+2. suggested_selling_price: Use the "Suggested selling price" from the context when provided (a number, e.g. 2.99), else null.
+3. bundle_suggestion: Use ONLY item names from the "Bundle candidates" list in the context. Format as "Bundle with: ItemA, ItemB" or "Bundle with ItemA and ItemB" using 1-3 exact names from that list. If no bundle candidates are listed, use null.
 
 IMPORTANT: Output plain text only in reasoning and expected_outcome. Do not use markdown: no asterisks, no hashtags, no bold/italic. Write in clear sentences so the text can be shown in chat and in the suggestion tab as-is.
 
@@ -447,9 +566,9 @@ Provide a structured recommendation as JSON with:
 - priority: High, Medium, or Low
 - reasoning: 1-2 plain-text sentences (no markdown)
 - expected_outcome: One plain-text sentence (no markdown)
-- suggested_discount_percent: Optional number 0-50 if a discount is recommended (e.g. near expiry or overstock), else null
-- suggested_selling_price: Optional number or string for recommended selling price (e.g. 2.99 or "Sell at $2.99"), else null
-- bundle_suggestion: Optional string suggesting what to bundle with (e.g. "Bundle with yogurt and cereal"), else null
+- suggested_discount_percent: Number 0-50 from rule-based suggestion (near expiry/overstock), else null
+- suggested_selling_price: Number from context (e.g. 2.99) when provided, else null
+- bundle_suggestion: "Bundle with: Name1, Name2" using ONLY names from Bundle candidates list, else null
 - waste_action: Optional string if relevant, e.g. "Sell or donate soon" when expiry is near, else null
 - discard_reason: Required when action is discard: one plain-text sentence explaining why to discard (e.g. expired, damaged, unsaleable), else null
 """),
@@ -466,6 +585,16 @@ Provide a structured recommendation as JSON with:
             bundle_suggestion = llm_result.get("bundle_suggestion")
             if isinstance(bundle_suggestion, str):
                 bundle_suggestion = strip_markdown(bundle_suggestion).strip() or None
+            # When waste/expiry: use rule-based exact values if LLM omitted them
+            if user_asked_about_waste:
+                if suggested_discount is None:
+                    suggested_discount = discount_pct
+                if suggested_price is None:
+                    suggested_price = computed_suggested_price
+                if not bundle_suggestion and bundle_candidates:
+                    names = [c.get("item_name", "").strip() for c in bundle_candidates[:3] if c.get("item_name")]
+                    if names:
+                        bundle_suggestion = "Bundle with: " + ", ".join(names)
             discard_reason = llm_result.get("discard_reason")
             if isinstance(discard_reason, str):
                 discard_reason = strip_markdown(discard_reason).strip() or None
@@ -495,14 +624,19 @@ Provide a structured recommendation as JSON with:
         except Exception as e:
             logger.error(f"LLM synthesis failed: {e}")
             if user_asked_about_waste:
+                bundle_fallback = "Bundle with complementary items from same category."
+                if bundle_candidates:
+                    names = [c.get("item_name", "").strip() for c in bundle_candidates[:3] if c.get("item_name")]
+                    if names:
+                        bundle_fallback = "Bundle with: " + ", ".join(names)
                 recommendation = {
                     "action": "none",
                     "priority": "Medium",
-                    "reasoning": "Item is near expiry. Consider a 10-20% discount or sell/donate soon. Bundle with complementary items if possible.",
+                    "reasoning": f"Item is near expiry. Suggested {discount_pct}% discount" + (f", sell at ${computed_suggested_price}" if computed_suggested_price is not None else "") + ". " + bundle_fallback,
                     "expected_outcome": "Reduced waste and better use of soon-to-expire inventory.",
-                    "suggested_discount_percent": 15,
-                    "suggested_selling_price": None,
-                    "bundle_suggestion": "Bundle with complementary items to move stock.",
+                    "suggested_discount_percent": discount_pct,
+                    "suggested_selling_price": computed_suggested_price,
+                    "bundle_suggestion": bundle_fallback,
                     "discard_reason": None,
                     "llm_enhanced": False,
                 }
@@ -529,14 +663,19 @@ Provide a structured recommendation as JSON with:
             priority = "Low"
         
         if user_asked_about_waste:
+            bundle_fallback = "Bundle with complementary items from same category."
+            if bundle_candidates:
+                names = [c.get("item_name", "").strip() for c in bundle_candidates[:3] if c.get("item_name")]
+                if names:
+                    bundle_fallback = "Bundle with: " + ", ".join(names)
             recommendation = {
                 "action": "none",
                 "priority": priority,
-                "reasoning": "Item is near expiry. Consider a 10-20% discount or sell/donate soon. Bundle with complementary items if possible.",
+                "reasoning": f"Item is near expiry. Suggested {discount_pct}% discount" + (f", sell at ${computed_suggested_price}" if computed_suggested_price is not None else "") + ". " + bundle_fallback,
                 "expected_outcome": "Reduced waste and better use of soon-to-expire inventory.",
-                "suggested_discount_percent": 15,
-                "suggested_selling_price": None,
-                "bundle_suggestion": "Bundle with complementary items to move stock.",
+                "suggested_discount_percent": discount_pct,
+                "suggested_selling_price": computed_suggested_price,
+                "bundle_suggestion": bundle_fallback,
                 "discard_reason": None,
                 "llm_enhanced": False,
             }
@@ -559,6 +698,7 @@ Provide a structured recommendation as JSON with:
             "feasibility_check": state.get("feasibility_check", {}),
             "cost_impact": state.get("cost_impact", {}),
             "explanation": state.get("explanation", {}),
+            "nearest_food_banks": state.get("nearest_food_banks", []),
         }
     }
 
@@ -576,14 +716,16 @@ def build_orchestration_graph() -> StateGraph:
     builder.add_node("assess_risk", assess_risk)
     builder.add_node("check_feasibility", check_feasibility)
     builder.add_node("assess_cost_impact", assess_cost_impact)
+    builder.add_node("get_donation_options", get_donation_options)
     builder.add_node("generate_explanation", generate_explanation)
     builder.add_node("synthesize_recommendation", synthesize_recommendation)
     
-    # Define flow: Sequential execution through subagents, then explanation and synthesis
+    # Define flow: cost impact -> optional food bank lookup (discard/donate) -> explanation -> synthesis
     builder.add_edge(START, "assess_risk")
     builder.add_edge("assess_risk", "check_feasibility")
     builder.add_edge("check_feasibility", "assess_cost_impact")
-    builder.add_edge("assess_cost_impact", "generate_explanation")
+    builder.add_edge("assess_cost_impact", "get_donation_options")
+    builder.add_edge("get_donation_options", "generate_explanation")
     builder.add_edge("generate_explanation", "synthesize_recommendation")
     builder.add_edge("synthesize_recommendation", END)
     

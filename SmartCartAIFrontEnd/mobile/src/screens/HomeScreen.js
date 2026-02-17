@@ -117,7 +117,10 @@ export default function HomeScreen() {
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: c.bg }]} contentContainerStyle={styles.content}>
-      <HeroSection stats={stats} />
+      <HeroSection
+        stats={stats}
+        onExpirySoonPress={() => setSelectedStockStatus('Expiry Soon')}
+      />
       <View style={styles.searchFilter}>
         <SearchBar searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
         <FilterSection

@@ -1,10 +1,16 @@
 package com.smartcartai.backend.entity;
 
-import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "suggestions")
@@ -70,4 +76,8 @@ public class Suggestion {
 
     @Column(name = "status", length = 20)
     private String status;
+
+    /** JSON or text: nearest food bank(s) when action is discard/donate. */
+    @Column(name = "donation_info", columnDefinition = "TEXT")
+    private String donationInfo;
 }

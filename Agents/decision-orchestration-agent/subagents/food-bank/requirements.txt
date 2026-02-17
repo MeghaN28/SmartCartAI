@@ -1,0 +1,4 @@
+flask>=2.0
+psycopg2-binary>=2.9
+fastmcp>=0.1
+python-dotenv>=1.0

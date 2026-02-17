@@ -238,6 +238,27 @@ export default function SuggestionLogScreen() {
               </View>
             )}
 
+            {(() => {
+              try {
+                const raw = suggestion.donationInfo;
+                if (!raw || typeof raw !== 'string') return null;
+                const arr = JSON.parse(raw);
+                if (!Array.isArray(arr) || arr.length === 0) return null;
+                const names = arr.map((fb) => fb?.name).filter(Boolean);
+                const withAddress = arr.map((fb) => fb?.address ? `${fb.name || 'Food bank'}: ${fb.address}` : (fb.name || 'Food bank')).filter(Boolean);
+                return (
+                  <View style={styles.section}>
+                    <Text style={[styles.label, { color: c.textSecondary }]}>Donate to</Text>
+                    <Text style={[styles.outcomeText, { color: c.text }]}>
+                      {withAddress.length ? withAddress.join('\n') : names.join(', ')}
+                    </Text>
+                  </View>
+                );
+              } catch (_) {
+                return null;
+              }
+            })()}
+
             <View style={styles.detailsGrid}>
               <View style={styles.detailItem}>
                 <Text style={[styles.detailLabel, { color: c.textSecondary }]}>Current Stock</Text>
@@ -268,7 +289,7 @@ export default function SuggestionLogScreen() {
                 </Text>
               </View>
               <Text style={[styles.timestamp, { color: c.textSecondary }]}>
-                {new Date(suggestion.createdAt).toLocaleString()}
+                {suggestion.createdAt ? new Date(suggestion.createdAt).toLocaleString() : '—'}
               </Text>
             </View>
 

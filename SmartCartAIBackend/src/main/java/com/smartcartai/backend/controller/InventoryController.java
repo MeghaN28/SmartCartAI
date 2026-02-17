@@ -43,7 +43,9 @@ public class InventoryController {
                 e.getVendorId(),
                 e.getMinStock(),
                 e.getMaxCapacity(),
-                e.getOpeningStock()
+                e.getOpeningStock(),
+                e.getExpiryDate(),
+                e.getSellingPrice()
         );
     }
 }

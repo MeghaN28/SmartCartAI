@@ -5,6 +5,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
 @Getter
 @Setter
 @NoArgsConstructor
@@ -20,4 +23,6 @@ public class InventoryWithoutIdResponse {
     private Integer minStock;
     private Integer maxCapacity;
     private Integer openingStock;
+    private LocalDate expiryDate;
+    private BigDecimal sellingPrice;
 }

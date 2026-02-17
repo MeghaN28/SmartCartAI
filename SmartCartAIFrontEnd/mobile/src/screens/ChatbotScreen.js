@@ -126,6 +126,7 @@ export default function ChatbotScreen() {
 
   const quickQuestions = [
     'Check inventory and suggest actions',
+    "What's going to waste?",
     'What items need reordering?',
     'Analyze low stock items',
     'Generate suggestions for inventory',

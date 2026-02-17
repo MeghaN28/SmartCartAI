@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 from datetime import datetime
 
+import json
 import requests
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -68,8 +69,9 @@ def get_near_expiry_items(within_days: int = 14) -> List[Dict]:
         cur = conn.cursor()
         try:
             cur.execute("""
-                SELECT inventory_id, item_name, category, opening_stock as remaining_stock,
-                       min_stock, max_capacity, vendor_id, expiry_date, selling_price
+                SELECT inventory_id, item_name, category, form, "use",
+                       opening_stock as remaining_stock, min_stock, max_capacity,
+                       vendor_id, expiry_date, selling_price
                 FROM inventory
                 WHERE expiry_date IS NOT NULL
                   AND expiry_date >= CURRENT_DATE
@@ -104,8 +106,9 @@ def get_items_by_name(search: str) -> List[Dict]:
         pattern = f"%{search.strip()}%"
         try:
             cur.execute("""
-                SELECT inventory_id, item_name, category, opening_stock as remaining_stock,
-                       min_stock, max_capacity, vendor_id, expiry_date, selling_price
+                SELECT inventory_id, item_name, category, form, "use",
+                       opening_stock as remaining_stock, min_stock, max_capacity,
+                       vendor_id, expiry_date, selling_price
                 FROM inventory
                 WHERE item_name ILIKE %s
                 ORDER BY opening_stock ASC
@@ -232,7 +235,7 @@ def get_items_needing_attention(query: str) -> List[Dict]:
         query_lower = query.lower()
         
         # Determine what items to check based on query
-        sel_ext = "SELECT inventory_id, item_name, category, opening_stock as remaining_stock, min_stock, max_capacity, vendor_id, expiry_date, selling_price FROM inventory"
+        sel_ext = "SELECT inventory_id, item_name, category, form, \"use\", opening_stock as remaining_stock, min_stock, max_capacity, vendor_id, expiry_date, selling_price FROM inventory"
         sel_base = "SELECT inventory_id, item_name, category, opening_stock as remaining_stock, min_stock, max_capacity, vendor_id FROM inventory"
         if any(word in query_lower for word in ["low stock", "low in stock", "reorder", "suggest", "recommend"]):
             q = " WHERE opening_stock <= min_stock ORDER BY opening_stock ASC LIMIT 20"
@@ -356,6 +359,8 @@ def call_decision_orchestrator(item: Dict, user_asked_about_waste: bool = False)
             "item_data": {
                 "item_name": item.get('item_name'),
                 "category": item.get('category'),
+                "form": item.get('form'),
+                "use": item.get('use'),
                 "min_stock": min_stock,
                 "max_capacity": item.get('max_capacity', 1000),
                 "vendor_id": item.get('vendor_id'),
@@ -404,13 +409,16 @@ def save_suggestion(user_query: str, item: Dict, recommendation: Dict) -> Option
         cost = recommendation.get('cost_impact', {})
         explanation = recommendation.get('explanation', {})
         
+        donation_info_val = None
+        if rec.get('nearest_food_banks'):
+            donation_info_val = json.dumps(rec.get('nearest_food_banks'))
         cur.execute("""
             INSERT INTO suggestions (
                 inventory_id, item_name, user_query, action, priority, reasoning,
                 expected_outcome, risk_level, risk_score, is_feasible,
                 estimated_cost, within_budget, explanation, current_stock,
-                min_stock, forecasted_demand, status
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                min_stock, forecasted_demand, status, donation_info
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING suggestion_id
         """, (
             item['inventory_id'],
@@ -429,7 +437,8 @@ def save_suggestion(user_query: str, item: Dict, recommendation: Dict) -> Option
             item.get('remaining_stock', 0),
             item.get('min_stock', 0),
             recommendation.get('forecasted_demand', 0.0),
-            'pending'
+            'pending',
+            donation_info_val
         ))
         
         suggestion_id = cur.fetchone()['suggestion_id']
@@ -484,6 +493,11 @@ def _format_recommendation_line(item_name: str, recommendation: Dict, include_re
         extras.append(f"Discard reason: {rec.get('discard_reason')}")
     if rec.get("waste_action"):
         extras.append(rec.get("waste_action"))
+    nearest_fb = rec.get("nearest_food_banks") or []
+    if nearest_fb:
+        names = [str(fb.get("name", "")).strip() for fb in nearest_fb[:3] if fb.get("name")]
+        if names:
+            extras.append("Donate to: " + ", ".join(names))
     if extras:
         parts.append(" | " + ", ".join(extras))
     if include_reason:
@@ -617,6 +631,10 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                     if items_by_name:
                         items = items_by_name
                         break
+
+    # When user asked about waste/expiry and we still have no items, try local near-expiry (e.g. agent returned [])
+    if not items and waste_trigger:
+        items = get_near_expiry_items(within_days=14)
     
     suggestions_generated = []
     answer_parts = []
@@ -670,6 +688,8 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
         answer_parts.append("I've checked your inventory.")
         if total == 0:
             answer_parts.append("There are no items in your inventory yet.")
+        elif waste_trigger:
+            answer_parts.append("No items are near expiry in the next 14 days. To get discount, bundle, and donation suggestions, set expiry_date on items in your inventory.")
         else:
             answer_parts.append(f"You have {total} item(s) in inventory. No items currently need attention (low stock count: {low}).")
         answer_parts.append("Try asking about a specific item by name (e.g. \"apple\") or \"What items need reordering?\" when you have low stock.")

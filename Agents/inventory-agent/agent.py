@@ -123,8 +123,9 @@ def get_near_expiry_items(within_days: int = 14) -> List[dict]:
         cur = conn.cursor()
         try:
             cur.execute("""
-                SELECT inventory_id, item_name, category, opening_stock AS remaining_stock,
-                       min_stock, max_capacity, vendor_id, expiry_date, selling_price
+                SELECT inventory_id, item_name, category, form, "use",
+                       opening_stock AS remaining_stock, min_stock, max_capacity,
+                       vendor_id, expiry_date, selling_price
                 FROM inventory
                 WHERE expiry_date IS NOT NULL
                   AND expiry_date >= CURRENT_DATE
@@ -159,8 +160,9 @@ def get_items_by_name(search: str) -> List[dict]:
         pattern = f"%{search.strip()}%"
         try:
             cur.execute("""
-                SELECT inventory_id, item_name, category, opening_stock AS remaining_stock,
-                       min_stock, max_capacity, vendor_id, expiry_date, selling_price
+                SELECT inventory_id, item_name, category, form, "use",
+                       opening_stock AS remaining_stock, min_stock, max_capacity,
+                       vendor_id, expiry_date, selling_price
                 FROM inventory
                 WHERE item_name ILIKE %s
                 ORDER BY opening_stock ASC
@@ -192,7 +194,7 @@ def get_items_needing_attention(query: str) -> List[dict]:
         cur = conn.cursor()
         query_lower = query.lower()
         sel_ext = (
-            "SELECT inventory_id, item_name, category, opening_stock AS remaining_stock, "
+            "SELECT inventory_id, item_name, category, form, \"use\", opening_stock AS remaining_stock, "
             "min_stock, max_capacity, vendor_id, expiry_date, selling_price FROM inventory"
         )
         sel_base = (

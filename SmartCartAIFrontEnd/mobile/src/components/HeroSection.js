@@ -4,10 +4,11 @@ import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { colors, spacing, radius, typography, shadows } from '../theme';
 
-export default function HeroSection({ stats }) {
+export default function HeroSection({ stats, onExpirySoonPress }) {
   const navigation = useNavigation();
   const { theme } = useTheme();
   const c = colors[theme] || colors.dark;
+  const expiryColor = '#f97316';
 
   return (
     <View style={[styles.hero, { backgroundColor: c.card, borderColor: c.border }, shadows.card]}>
@@ -38,6 +39,16 @@ export default function HeroSection({ stats }) {
           <Text style={[styles.statNum, { color: c.danger }]}>{stats.outOfStock}</Text>
           <Text style={[styles.statLabel, { color: c.textSecondary }]}>Out</Text>
         </View>
+        <View style={styles.statDivider} />
+        <TouchableOpacity
+          style={styles.stat}
+          onPress={onExpirySoonPress}
+          activeOpacity={0.7}
+          disabled={!onExpirySoonPress}
+        >
+          <Text style={[styles.statNum, { color: expiryColor }]}>{stats.expirySoon}</Text>
+          <Text style={[styles.statLabel, { color: c.textSecondary }]}>Expiry Soon</Text>
+        </TouchableOpacity>
       </View>
       <View style={styles.buttons}>
         <TouchableOpacity
