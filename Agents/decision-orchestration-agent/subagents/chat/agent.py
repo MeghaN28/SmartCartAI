@@ -1,11 +1,16 @@
 """Chat Agent – Orchestrator that handles conversational queries, checks inventory, calls decision agent, and stores suggestions."""
 import os
+import sys
 import logging
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 from datetime import datetime
 
 import json
+
+# Single source of demand forecast: ETS only (same as Inventory Agent)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
+from common.forecasting import forecast_demand as forecast_demand_ets
 import requests
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -69,7 +74,7 @@ def get_near_expiry_items(within_days: int = 14) -> List[Dict]:
         cur = conn.cursor()
         try:
             cur.execute("""
-                SELECT inventory_id, item_name, category, form, "use",
+                SELECT inventory_id, item_name, category, form, usage,
                        opening_stock as remaining_stock, min_stock, max_capacity,
                        vendor_id, expiry_date, selling_price
                 FROM inventory
@@ -106,7 +111,7 @@ def get_items_by_name(search: str) -> List[Dict]:
         pattern = f"%{search.strip()}%"
         try:
             cur.execute("""
-                SELECT inventory_id, item_name, category, form, "use",
+                SELECT inventory_id, item_name, category, form, usage,
                        opening_stock as remaining_stock, min_stock, max_capacity,
                        vendor_id, expiry_date, selling_price
                 FROM inventory
@@ -133,11 +138,12 @@ def get_items_by_name(search: str) -> List[Dict]:
         return []
 
 
-def call_inventory_agent_query(query: str) -> Tuple[List[Dict], Optional[str]]:
+def call_inventory_agent_query(query: str) -> Tuple[List[Dict], Optional[str], Optional[str]]:
     """
     Call the Inventory Agent with the user query. Inventory Agent sees the DB
     (low stock, expired, near expiring, waste, etc.) and returns matching items.
-    Returns (items_list, error_message). On success error_message is None.
+    Returns (items_list, error_message, query_type). On success error_message is None.
+    query_type is e.g. "near_expiry", "low_stock", "check" so Chat can show the right empty message.
     """
     try:
         response = requests.post(
@@ -146,16 +152,17 @@ def call_inventory_agent_query(query: str) -> Tuple[List[Dict], Optional[str]]:
             timeout=10,
         )
         if not response.ok:
-            return [], f"Inventory agent returned {response.status_code}"
+            return [], f"Inventory agent returned {response.status_code}", None
         data = response.json()
         items = data.get("items") or []
-        return items, None
+        query_type = data.get("query_type") or None
+        return items, None, query_type
     except requests.exceptions.ConnectionError:
-        return [], "Inventory agent not reachable (is it running on port 9005?)"
+        return [], "Inventory agent not reachable (is it running on port 9005?)", None
     except requests.exceptions.Timeout:
-        return [], "Inventory agent timed out"
+        return [], "Inventory agent timed out", None
     except Exception as e:
-        return [], str(e)[:120]
+        return [], str(e)[:120], None
 
 
 def get_out_of_stock_items(limit: int = 10) -> List[Dict]:
@@ -286,16 +293,26 @@ def strip_markdown(text: str) -> str:
 
 
 def get_consumption_history(inventory_id: str, last_n_days: int = FORECAST_PAST_DAYS) -> List[Dict]:
-    """Get consumption history for an item (default: past 1 week for demand forecast)."""
+    """Get consumption history for an item (default: past 1 week for demand forecast).
+    Tries schema column 'date' first (schema.sql), then 'transaction_date' for compatibility."""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("""
-            SELECT transaction_date as date, quantity_consumed, remaining_stock, department, consumption_reason
-            FROM consumption
-            WHERE inventory_id = %s AND transaction_date >= CURRENT_DATE - INTERVAL '1 day' * %s
-            ORDER BY transaction_date DESC
-        """, (inventory_id, last_n_days))
+        # Try 'date' column first (matches database/schema.sql)
+        try:
+            cur.execute("""
+                SELECT date, quantity_consumed, remaining_stock, department, consumption_reason
+                FROM consumption
+                WHERE inventory_id = %s AND date >= CURRENT_DATE - INTERVAL '1 day' * %s
+                ORDER BY date DESC
+            """, (inventory_id, last_n_days))
+        except Exception:
+            cur.execute("""
+                SELECT transaction_date as date, quantity_consumed, remaining_stock, department, consumption_reason
+                FROM consumption
+                WHERE inventory_id = %s AND transaction_date >= CURRENT_DATE - INTERVAL '1 day' * %s
+                ORDER BY transaction_date DESC
+            """, (inventory_id, last_n_days))
         history = [dict(row) for row in cur.fetchall()]
         cur.close()
         conn.close()
@@ -305,27 +322,49 @@ def get_consumption_history(inventory_id: str, last_n_days: int = FORECAST_PAST_
         return []
 
 
+def get_demand_floor(inventory_id: str) -> float:
+    """Return daily demand floor from demand table so DB can boost forecasted demand."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT predicted_demand FROM demand
+            WHERE inventory_id = %s
+            ORDER BY prediction_date DESC NULLS LAST
+            LIMIT 1
+        """, (inventory_id,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if row and row.get("predicted_demand") is not None:
+            return float(row["predicted_demand"])
+    except Exception as e:
+        logger.debug(f"Demand floor not available for {inventory_id}: {e}")
+    return 0.0
+
+
 def calculate_forecasted_demand(consumption_history: List[Dict]) -> float:
-    """Forecast demand for the next 1 week: daily rate from past 1 week of consumption (total / 7 days)."""
-    if not consumption_history:
-        return 0.0
-    total_consumed = sum(float(h.get('quantity_consumed', 0) or 0) for h in consumption_history)
-    if total_consumed <= 0:
-        return 0.0
-    # Past N days → daily rate = total / N (forecast for next week uses this daily rate)
-    n_days = min(len(consumption_history), FORECAST_PAST_DAYS)
-    if n_days == 0:
-        return 0.0
-    return total_consumed / FORECAST_PAST_DAYS
+    """Forecast demand using ETS (Holt-Winters) only – same as Inventory Agent and common.forecasting."""
+    return forecast_demand_ets(consumption_history)
 
 
 def call_decision_orchestrator(item: Dict, user_asked_about_waste: bool = False) -> Tuple[Optional[Dict], Optional[str]]:
     """Call the Decision Orchestrator Agent for an item. Returns (response_json, error_message).
     When user_asked_about_waste is True (e.g. 'What's going to waste?'), passes near_expiry intent
-    so the orchestrator can suggest discount / sell or donate soon."""
+    so the orchestrator can suggest discount / sell or donate soon.
+    Uses ETS forecast: from Inventory Agent item when present, else computed here (same ETS)."""
     try:
         consumption_history = get_consumption_history(item['inventory_id'])
-        forecasted_demand = calculate_forecasted_demand(consumption_history)
+        # Use ETS forecast from Inventory Agent when available, else compute with same ETS; floor with demand table
+        if item.get('forecasted_demand') is not None:
+            forecasted_demand = float(item['forecasted_demand'])
+        else:
+            forecasted_demand = calculate_forecasted_demand(consumption_history)
+        demand_floor = get_demand_floor(item['inventory_id'])
+        forecasted_demand = max(forecasted_demand, demand_floor)
+        # Avoid sending 0 so orchestrator doesn't treat full stock as surplus (everything → DONATE)
+        if forecasted_demand <= 0:
+            forecasted_demand = 25.0  # default daily demand when no history/DB
         
         # Determine stock signal
         remaining_stock = item.get('remaining_stock', 0)
@@ -360,7 +399,7 @@ def call_decision_orchestrator(item: Dict, user_asked_about_waste: bool = False)
                 "item_name": item.get('item_name'),
                 "category": item.get('category'),
                 "form": item.get('form'),
-                "use": item.get('use'),
+                "use": item.get('usage'),
                 "min_stock": min_stock,
                 "max_capacity": item.get('max_capacity', 1000),
                 "vendor_id": item.get('vendor_id'),
@@ -417,8 +456,8 @@ def save_suggestion(user_query: str, item: Dict, recommendation: Dict) -> Option
                 inventory_id, item_name, user_query, action, priority, reasoning,
                 expected_outcome, risk_level, risk_score, is_feasible,
                 estimated_cost, within_budget, explanation, current_stock,
-                min_stock, forecasted_demand, status, donation_info
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                min_stock, forecasted_demand, status, donation_info, created_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
             RETURNING suggestion_id
         """, (
             item['inventory_id'],
@@ -473,15 +512,42 @@ def _get_inventory_summary() -> Dict:
         return {"total_items": 0, "total_stock": 0, "low_stock_count": 0}
 
 
-def _format_recommendation_line(item_name: str, recommendation: Dict, include_reason: bool = True) -> str:
-    """Format a single recommendation for chat: action, discount %, bundle, discard + reason, explanation."""
+def _format_recommendation_line(
+    item_name: str,
+    recommendation: Dict,
+    include_reason: bool = True,
+    item: Optional[Dict] = None,
+    query_type: Optional[str] = None,
+    no_expiry_hint: bool = False,
+) -> str:
+    """Format a single recommendation for chat: action, discount %, bundle, discard + reason, explanation.
+    If item and query_type provided, can add stock status and demand for next week.
+    If no_expiry_hint (waste query but item has no expiry_date), add hint to set expiry for discount/donation."""
     rec = recommendation.get("recommendation", {})
     action = rec.get("action", "none")
     priority = rec.get("priority", "Medium")
     reasoning = rec.get("reasoning", "")
     parts = [f"• {item_name}: {action.upper()} ({priority} priority)"]
+    if no_expiry_hint:
+        parts.append(" No expiry date set — set expiry_date to get discount and donation suggestions.")
+    if item and query_type in ("out_of_stock", "overstock", "demand", "low_stock", "check", "stock_status"):
+        stock = item.get("remaining_stock", item.get("opening_stock", 0))
+        min_s = item.get("min_stock", 0)
+        if stock <= 0:
+            parts.append(" [OUT OF STOCK — suggest reorder]")
+        elif min_s and stock < min_s:
+            parts.append(" [NEAR STOCKOUT — suggest reorder]")
+        elif query_type == "overstock":
+            parts.append(" [OVERSTOCK]")
+        else:
+            parts.append(" [In stock]")
+        fd = item.get("forecasted_demand")
+        if fd is not None and query_type in ("demand", "out_of_stock", "low_stock", "check"):
+            next_week = round(float(fd) * 7, 1)
+            parts.append(f" Demand (next 7 days): ~{next_week}")
     if reasoning:
-        parts.append(f" — {reasoning[:120]}" + ("..." if len(reasoning) > 120 else ""))
+        cap = 200 if action.lower() in ("donate", "bundle", "discount") else 120
+        parts.append(f" — {reasoning[:cap]}" + ("..." if len(reasoning) > cap else ""))
     extras = []
     if rec.get("suggested_discount_percent") is not None:
         extras.append(f"Discount: {rec.get('suggested_discount_percent')}%")
@@ -495,15 +561,32 @@ def _format_recommendation_line(item_name: str, recommendation: Dict, include_re
         extras.append(rec.get("waste_action"))
     nearest_fb = rec.get("nearest_food_banks") or []
     if nearest_fb:
-        names = [str(fb.get("name", "")).strip() for fb in nearest_fb[:3] if fb.get("name")]
-        if names:
-            extras.append("Donate to: " + ", ".join(names))
+        # Exact donation location: name and full address (use separate list so we don't overwrite parts)
+        donation_parts = []
+        for fb in nearest_fb[:3]:
+            name = str(fb.get("name", "")).strip()
+            addr = str(fb.get("address", "")).strip()
+            city = str(fb.get("city", "")).strip()
+            state = str(fb.get("state", "")).strip()
+            zip_ = str(fb.get("zip", "")).strip()
+            loc = ", ".join(x for x in [addr, city, state, zip_] if x)
+            if name and loc:
+                donation_parts.append(f"{name} at {loc}")
+            elif name:
+                donation_parts.append(name)
+        if donation_parts:
+            extras.append("Donate to: " + "; ".join(donation_parts))
     if extras:
         parts.append(" | " + ", ".join(extras))
-    if include_reason:
+    if include_reason and action.lower() not in ("donate", "bundle", "discount"):
+        # Don't append explanation for waste actions (we already show rule-based reasoning above; explanation often says "no action")
         explanation = recommendation.get("explanation", {})
         if isinstance(explanation, dict) and explanation.get("explanation"):
-            parts.append(f" Reason: {(explanation.get('explanation') or '')[:150]}" + ("..." if len(explanation.get("explanation", "")) > 150 else ""))
+            expl = (explanation.get("explanation") or "").strip()
+            if expl and "no action" not in expl.lower() and "recommended action is to none" not in expl.lower():
+                parts.append(f" Reason: {expl[:150]}" + ("..." if len(expl) > 150 else ""))
+            elif not reasoning and expl:
+                parts.append(f" Reason: {expl[:150]}" + ("..." if len(expl) > 150 else ""))
     return "".join(parts)
 
 
@@ -591,17 +674,36 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
         "suggest", "recommend", "what should", "what do", "check", "analyze",
         "low stock", "reorder", "need", "help"
     ])
-    # Waste / expiry / donate / sell-soon triggers
+    # Waste / expiry / donate / sell-soon triggers (Chat-side)
     waste_trigger = any(word in query_lower for word in [
         "waste", "donate", "sell soon", "expir", "expiry", "going to waste",
-        "sell or donate", "anything to sell", "anything to donate"
+        "sell or donate", "anything to sell", "anything to donate", "whats going to waste"
     ])
     if waste_trigger:
         should_generate_suggestions = True
 
     # Get items from Inventory Agent (single place that sees DB for user query).
-    # Fall back to local DB if Inventory Agent is unavailable.
-    items, inv_err = call_inventory_agent_query(query)
+    # Inventory Agent uses LLM to understand any phrasing (e.g. "near expiry items", "what's going on waste").
+    items, inv_err, inventory_query_type = call_inventory_agent_query(query)
+    # Only auto-enable recommendations for intents that imply "give me actions" (not for simple stock lookups)
+    if items and inventory_query_type in ("near_expiry", "low_stock", "out_of_stock", "overstock", "demand"):
+        should_generate_suggestions = True
+    # Use Inventory Agent's interpretation: if it said "near_expiry", treat as waste
+    is_waste_query = waste_trigger or (inventory_query_type == "near_expiry")
+    # If we have items and any has expiry within 14 days, run waste intervention (discount/bundle/donate)
+    if items and not is_waste_query:
+        try:
+            from datetime import date, timedelta
+            today = date.today()
+            for item in items:
+                ed = item.get("expiry_date")
+                if ed is not None:
+                    d = ed if isinstance(ed, date) else date.fromisoformat(str(ed)[:10])
+                    if 0 <= (d - today).days <= 14:
+                        is_waste_query = True
+                        break
+        except Exception:
+            pass
     if inv_err and (should_generate_suggestions or waste_trigger):
         logger.warning(f"Inventory agent unavailable ({inv_err}), using local DB fallback")
 
@@ -613,12 +715,44 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
             if near_expiry:
                 items = near_expiry
             else:
+                # Try by-name for waste: longest token first so "milk" is tried before "can"
+                waste_stopwords = {"is", "going", "to", "waste", "on", "whats", "what", "the", "any", "sell", "donate", "soon"}
+                skip_generic = {"can", "we", "it", "or", "be", "do", "go"}
+                candidates = [t for t in query_tokens if len(t) > 1 and t.lower() not in waste_stopwords and t.lower() not in skip_generic]
+                candidates.sort(key=lambda t: -len(t))
+                for token in candidates:
+                    items_by_name = get_items_by_name(token)
+                    if items_by_name:
+                        items = items_by_name
+                        break
+                if not items and len(query_tokens) >= 2:
+                    name_part = " ".join(t for t in query_tokens if t.lower() not in waste_stopwords)
+                    if name_part:
+                        items = get_items_by_name(name_part)
+            if not items:
                 items = []
         if not items and len(query_tokens) <= 3 and query_tokens:
             items_by_name = get_items_by_name(query.strip())
             if items_by_name:
                 items = items_by_name
                 should_generate_suggestions = True
+        if should_generate_suggestions and not items and (" and " in query_lower or ", " in query_lower):
+            import re as _re
+            segs = _re.split(r"\s+and\s+|\s*,\s*", query_lower)
+            stopwords = {"suggest", "recommend", "for", "what", "do", "the", "me", "give", "check", "you"}
+            seen = set()
+            merged = []
+            for seg in segs:
+                toks = [t for t in seg.split() if t and t not in stopwords]
+                if toks:
+                    name = toks[-1]
+                    items_by_name = get_items_by_name(name)
+                    for it in items_by_name or []:
+                        if it.get("inventory_id") not in seen:
+                            seen.add(it.get("inventory_id"))
+                            merged.append(it)
+            if merged:
+                items = merged
         if should_generate_suggestions and not items and len(query_tokens) >= 2:
             stopwords = {
                 "check", "inventory", "and", "suggest", "actions", "what", "items", "need",
@@ -632,22 +766,92 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                         items = items_by_name
                         break
 
-    # When user asked about waste/expiry and we still have no items, try local near-expiry (e.g. agent returned [])
-    if not items and waste_trigger:
+    # If query looks like a stock question but we have no items yet, try to resolve by name (e.g. "stock for apple" -> get_items_by_name("apple"))
+    if not items and any(phrase in query_lower for phrase in ["stock for", "stock of", "tell me stock", "tell me the stock", "what is the stock"]):
+        if "stock for " in query_lower:
+            name_part = query_lower.split("stock for ", 1)[-1].strip()
+            if name_part and len(name_part) < 50:
+                items = get_items_by_name(name_part)
+        if not items and query_tokens:
+            stopwords = {"stock", "for", "of", "the", "me", "tell", "what", "is", "level", "current"}
+            for token in reversed(query_tokens):
+                if len(token) > 1 and token.lower() not in stopwords:
+                    items = get_items_by_name(token)
+                    if items:
+                        break
+
+    # When user asked about waste/expiry (or Inventory said near_expiry) and we still have no items, try local near-expiry then by-name
+    if not items and is_waste_query:
         items = get_near_expiry_items(within_days=14)
+        if not items and query_tokens:
+            waste_stopwords = {"is", "going", "to", "waste", "on", "whats", "what", "the", "any", "sell", "donate", "soon"}
+            skip_generic = {"can", "we", "it", "or", "be", "do", "go"}
+            candidates = [t for t in query_tokens if len(t) > 1 and t.lower() not in waste_stopwords and t.lower() not in skip_generic]
+            candidates.sort(key=lambda t: -len(t))
+            for token in candidates:
+                items_by_name = get_items_by_name(token)
+                if items_by_name:
+                    items = items_by_name
+                    break
+            if not items:
+                name_part = " ".join(t for t in query_tokens if t.lower() not in waste_stopwords)
+                if name_part:
+                    items = get_items_by_name(name_part)
     
     suggestions_generated = []
     answer_parts = []
+
+    # Simple stock lookup: "stock for apple", "tell me the stock for apple" — return stock info only, no recommendations
+    query_looks_like_stock_question = any(phrase in query_lower for phrase in [
+        "stock for", "stock of", "tell me stock", "tell me the stock", "what is the stock",
+        "how much", "how many", "current stock", "stock level", "level for", "stock for"
+    ])
+    stock_lookup_only = (
+        items
+        and (
+            (inventory_query_type in ("stock_status", "by_name") and not should_generate_suggestions)
+            or query_looks_like_stock_question
+        )
+    )
+    if stock_lookup_only:
+        for item in items[:10]:
+            name = item.get("item_name", "Item")
+            stock = item.get("remaining_stock")
+            if stock is None:
+                stock = item.get("opening_stock")
+            if stock is None:
+                stock = "?"
+            min_s = item.get("min_stock")
+            max_cap = item.get("max_capacity")
+            parts = [f"{name}: {stock} in stock"]
+            if min_s is not None:
+                parts.append(f"min {min_s}")
+            if max_cap is not None:
+                parts.append(f"max capacity {max_cap}")
+            answer_parts.append(" — ".join(parts))
+        if not answer_parts:
+            answer_parts.append("No matching items found.")
     
-    if should_generate_suggestions and items:
-        answer_parts.append(f"I've analyzed your inventory and found {len(items)} item(s) that need attention.")
+    elif should_generate_suggestions and items:
+        # Stock/demand summary for out_of_stock, overstock, demand, stock_status query types
+        if inventory_query_type == "out_of_stock":
+            answer_parts.append(f"I found {len(items)} item(s) out of stock. Consider reordering to avoid lost sales.")
+        elif inventory_query_type == "overstock":
+            answer_parts.append(f"I found {len(items)} item(s) overstock (at or above 90%% of max capacity).")
+        elif inventory_query_type == "demand":
+            answer_parts.append("Here is demand forecast for the next 7 days based on recent consumption:\n")
+        elif inventory_query_type == "stock_status":
+            answer_parts.append(f"Current stock: {len(items)} item(s) in stock.\n")
+        else:
+            answer_parts.append(f"I've analyzed your inventory and found {len(items)} item(s) that need attention.")
         answer_parts.append("Here are my recommendations:\n")
         errors = []
 
-        # Process each item through decision orchestrator (pass waste intent for waste/expiry queries)
-        for item in items[:10]:  # Limit to 10 items
+        # Process each item through decision orchestrator (pass waste intent for waste/expiry queries).
+        # Each item = 1 POST /orchestrate = subagents + LLM call; limit to 5 to avoid Mistral rate limit (429).
+        for item in items[:5]:
             try:
-                recommendation, err = call_decision_orchestrator(item, user_asked_about_waste=waste_trigger)
+                recommendation, err = call_decision_orchestrator(item, user_asked_about_waste=is_waste_query)
                 if err:
                     errors.append(f"{item.get('item_name', item.get('inventory_id', '?'))}: {err}")
                     answer_parts.append(f"• {item.get('item_name', 'Item')}: Could not get recommendation — {err}")
@@ -662,7 +866,12 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                             "priority": recommendation.get('recommendation', {}).get('priority', 'Medium'),
                             "suggestion_id": suggestion_id
                         })
-                        answer_parts.append(_format_recommendation_line(item['item_name'], recommendation, include_reason=True))
+                        no_expiry = is_waste_query and not item.get("expiry_date")
+                        answer_parts.append(_format_recommendation_line(
+                            item['item_name'], recommendation, include_reason=True,
+                            item=item, query_type=inventory_query_type,
+                            no_expiry_hint=no_expiry,
+                        ))
                     else:
                         errors.append(f"{item.get('item_name')}: Failed to save suggestion to database.")
                 else:
@@ -688,8 +897,13 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
         answer_parts.append("I've checked your inventory.")
         if total == 0:
             answer_parts.append("There are no items in your inventory yet.")
-        elif waste_trigger:
-            answer_parts.append("No items are near expiry in the next 14 days. To get discount, bundle, and donation suggestions, set expiry_date on items in your inventory.")
+        elif is_waste_query:
+            answer_parts.append("No items are currently at expiry risk (within 14 days).")
+            answer_parts.append("To get actionable suggestions for waste reduction, you can:")
+            answer_parts.append("1. Set expiry_date on items in your inventory - this helps identify items approaching expiry so we can suggest discounts, bundling, or donation")
+            answer_parts.append("2. Ask about specific items by name (e.g. 'What about milk?')")
+            answer_parts.append("3. Ask about low stock items that may need reordering to prevent waste")
+            answer_parts.append("Your inventory currently has " + str(total) + " item(s) with " + str(low) + " items at low stock levels.")
         else:
             answer_parts.append(f"You have {total} item(s) in inventory. No items currently need attention (low stock count: {low}).")
         answer_parts.append("Try asking about a specific item by name (e.g. \"apple\") or \"What items need reordering?\" when you have low stock.")
@@ -797,4 +1011,5 @@ if __name__ == "__main__":
     logger.info(f"Starting Chat Agent Flask server on port {port}")
     logger.info(f"Health check: http://localhost:{port}/health")
     logger.info(f"Chat endpoint: http://localhost:{port}/chat")
-    app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
+    # debug=True + use_reloader=True so code changes take effect without restarting
+    app.run(host="0.0.0.0", port=port, debug=True, threaded=True, use_reloader=True)

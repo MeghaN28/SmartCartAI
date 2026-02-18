@@ -8,7 +8,7 @@ CREATE TABLE inventory (
   item_name TEXT NOT NULL,
   category TEXT,
   form TEXT,
-  "use" TEXT,
+  usage TEXT,
   item_type TEXT,
   vendor_id VARCHAR(32),
   min_stock INT,
@@ -64,7 +64,7 @@ CREATE TABLE demand (
 -- Example: quick CSV imports for development (psql `COPY` requires file accessible to DB server)
 -- Adjust the file path to your environment or use `[3mpsql[0m`'s \copy from client side.
 --
--- COPY inventory(inventory_id, item_name, category, form, "use", item_type, vendor_id, min_stock, max_capacity, opening_stock)
+-- COPY inventory(inventory_id, item_name, category, form, usage, item_type, vendor_id, min_stock, max_capacity, opening_stock)
 -- FROM '/absolute/path/to/SmartCartAI/Dataset/inventory_master_50_unique.csv' WITH (FORMAT csv, HEADER true);
 --
 -- COPY sales(invoice_id, vendor_id, inventory_id, purchase_date, quantity, unit_cost, total_cost, payment_status, account_code, delivery_date)

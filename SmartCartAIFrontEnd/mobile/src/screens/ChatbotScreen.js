@@ -18,7 +18,7 @@ export default function ChatbotScreen() {
   const [messages, setMessages] = useState([
     {
       id: generateId(),
-      text: "Hello! I'm your SmartCartAI assistant. I can analyze your inventory, check stock levels, and generate suggestions. Loading proactive alerts...",
+      text: "Hello! I'm your SmartCartAI assistant. I can analyze your inventory, check stock levels, and generate suggestions. Try asking: 'Check inventory and suggest actions', \"What's going to waste?\", or 'What items need reordering?'",
       sender: 'bot',
       timestamp: new Date(),
     },
@@ -28,47 +28,6 @@ export default function ChatbotScreen() {
   const [agentError, setAgentError] = useState(null);
   const [mode, setMode] = useState('text');
   const [sessionId] = useState(() => generateId()); // Persistent session ID
-  const [proactiveFetched, setProactiveFetched] = useState(false);
-
-  // Proactive alerts: fetch waste/expired/out of stock/overstock and show before user asks
-  useEffect(() => {
-    if (proactiveFetched || messages.length > 1) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(API.agents.proactive, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId }),
-        });
-        if (cancelled) return;
-        const data = await res.json().catch(() => ({}));
-        const answer = data.answer || data.error || '';
-        const suggestionNote = data.suggestions_count > 0
-          ? `\n\n💡 ${data.suggestions_count} suggestion(s) saved. Check the Suggestions tab.`
-          : '';
-        setMessages((prev) => {
-          if (prev.length !== 1) return prev;
-          const welcome = prev[0];
-          const welcomeText = "Hello! I'm your SmartCartAI assistant. I can analyze your inventory, check stock levels, and generate suggestions. Try asking: 'Check inventory and suggest actions' or 'What items need reordering?'";
-          return [
-            { ...welcome, text: welcomeText },
-            { id: generateId(), text: (answer || 'No alerts right now.') + suggestionNote, sender: 'bot', timestamp: new Date() },
-          ];
-        });
-      } catch (_) {
-        if (!cancelled) {
-          setMessages((prev) => {
-            if (prev.length !== 1) return prev;
-            return [{ ...prev[0], text: "Hello! I'm your SmartCartAI assistant. I can analyze your inventory, check stock levels, and generate suggestions. Try asking: 'Check inventory and suggest actions' or 'What items need reordering?'" }];
-          });
-        }
-      } finally {
-        if (!cancelled) setProactiveFetched(true);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [sessionId, proactiveFetched, messages.length]);
 
   const sendToAgent = async (text) => {
     if (!text?.trim()) return;
