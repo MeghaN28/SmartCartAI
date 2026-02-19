@@ -295,10 +295,10 @@ def strip_markdown(text: str) -> str:
 def get_consumption_history(inventory_id: str, last_n_days: int = FORECAST_PAST_DAYS) -> List[Dict]:
     """Get consumption history for an item (default: past 1 week for demand forecast).
     Tries schema column 'date' first (schema.sql), then 'transaction_date' for compatibility."""
+    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        # Try 'date' column first (matches database/schema.sql)
         try:
             cur.execute("""
                 SELECT date, quantity_consumed, remaining_stock, department, consumption_reason
@@ -307,6 +307,7 @@ def get_consumption_history(inventory_id: str, last_n_days: int = FORECAST_PAST_
                 ORDER BY date DESC
             """, (inventory_id, last_n_days))
         except Exception:
+            conn.rollback()  # required after failed query so next execute doesn't get "transaction is aborted"
             cur.execute("""
                 SELECT transaction_date as date, quantity_consumed, remaining_stock, department, consumption_reason
                 FROM consumption
@@ -319,6 +320,11 @@ def get_consumption_history(inventory_id: str, last_n_days: int = FORECAST_PAST_
         return history
     except Exception as e:
         logger.error(f"Error getting consumption history: {e}")
+        try:
+            if conn is not None:
+                conn.rollback()
+        except Exception:
+            pass
         return []
 
 
@@ -348,68 +354,102 @@ def calculate_forecasted_demand(consumption_history: List[Dict]) -> float:
     return forecast_demand_ets(consumption_history)
 
 
-def call_decision_orchestrator(item: Dict, user_asked_about_waste: bool = False) -> Tuple[Optional[Dict], Optional[str]]:
-    """Call the Decision Orchestrator Agent for an item. Returns (response_json, error_message).
-    When user_asked_about_waste is True (e.g. 'What's going to waste?'), passes near_expiry intent
-    so the orchestrator can suggest discount / sell or donate soon.
-    Uses ETS forecast: from Inventory Agent item when present, else computed here (same ETS)."""
+def _extract_product_name_from_query(query_lower: str) -> Optional[str]:
+    """Extract product name for stock/demand lookup: 'stock for honey' -> 'honey', 'forecast demand for garlic' -> 'garlic'."""
+    if not query_lower or len(query_lower) > 200:
+        return None
+    name_part = None
+    if "stock for " in query_lower:
+        name_part = query_lower.split("stock for ", 1)[-1].strip()
+    elif "forecast demand for " in query_lower:
+        name_part = query_lower.split("forecast demand for ", 1)[-1].strip()
+    elif "demand for " in query_lower:
+        name_part = query_lower.split("demand for ", 1)[-1].strip()
+    elif query_lower.strip().startswith("for "):
+        name_part = query_lower.replace("for ", "", 1).strip()
+    if name_part:
+        name_part = name_part.rstrip("?.!,")
+        # Single-word "for X" -> keep one word; "stock for X" / "demand for X" -> keep full phrase for filtering
+        if query_lower.strip().startswith("for ") and " " in name_part:
+            name_part = name_part.split()[0]
+    return name_part if (name_part and len(name_part) < 50) else None
+
+
+def _build_orchestrator_payload(item: Dict, user_asked_about_waste: bool, intent: str = "general") -> Dict:
+    """Build a single item payload for /orchestrate or /orchestrate_batch. Pass intent so orchestrator runs only relevant subagents."""
+    consumption_history = get_consumption_history(item['inventory_id'])
+    if item.get('forecasted_demand') is not None:
+        forecasted_demand = float(item['forecasted_demand'])
+    else:
+        forecasted_demand = calculate_forecasted_demand(consumption_history)
+    demand_floor = get_demand_floor(item['inventory_id'])
+    forecasted_demand = max(forecasted_demand, demand_floor)
+    if forecasted_demand <= 0:
+        forecasted_demand = 25.0
+    remaining_stock = item.get('remaining_stock', 0)
+    min_stock = item.get('min_stock', 10)
+    stock_signal = "critical" if remaining_stock == 0 else ("low" if remaining_stock < min_stock else "normal")
+    if user_asked_about_waste:
+        event_type, suggested_action, context = "near_expiry", "none", {"user_asked_about_waste": True, "intent": "waste"}
+    else:
+        event_type = "low_stock" if stock_signal != "normal" else "monitoring"
+        suggested_action = "reorder" if stock_signal != "normal" else "none"
+        context = {"intent": intent}
+    return {
+        "inventory_id": item['inventory_id'],
+        "event_type": event_type,
+        "remaining_stock": remaining_stock,
+        "suggested_action": suggested_action,
+        "stock_signal": stock_signal,
+        "consumption_signal": "normal",
+        "forecasted_demand": forecasted_demand,
+        "item_data": {
+            "item_name": item.get('item_name'),
+            "category": item.get('category'),
+            "form": item.get('form'),
+            "use": item.get('usage'),
+            "min_stock": min_stock,
+            "max_capacity": item.get('max_capacity', 1000),
+            "vendor_id": item.get('vendor_id'),
+            "expiry_date": _serialize_date(item.get('expiry_date')),
+            "selling_price": float(item.get('selling_price')) if item.get('selling_price') is not None else None,
+        },
+        "consumption_history": consumption_history[:10],
+        "context": context,
+    }
+
+
+def call_decision_orchestrator_batch(items: List[Dict], user_asked_about_waste: bool, intent: str = "general") -> Tuple[Optional[List[Dict]], Optional[str]]:
+    """One request for many items. Returns (list of full response dicts per item, error). Pass intent so orchestrator runs only relevant subagents."""
+    if not items:
+        return [], None
     try:
-        consumption_history = get_consumption_history(item['inventory_id'])
-        # Use ETS forecast from Inventory Agent when available, else compute with same ETS; floor with demand table
-        if item.get('forecasted_demand') is not None:
-            forecasted_demand = float(item['forecasted_demand'])
-        else:
-            forecasted_demand = calculate_forecasted_demand(consumption_history)
-        demand_floor = get_demand_floor(item['inventory_id'])
-        forecasted_demand = max(forecasted_demand, demand_floor)
-        # Avoid sending 0 so orchestrator doesn't treat full stock as surplus (everything → DONATE)
-        if forecasted_demand <= 0:
-            forecasted_demand = 25.0  # default daily demand when no history/DB
-        
-        # Determine stock signal
-        remaining_stock = item.get('remaining_stock', 0)
-        min_stock = item.get('min_stock', 10)
-        
-        if remaining_stock == 0:
-            stock_signal = "critical"
-        elif remaining_stock < min_stock:
-            stock_signal = "low"
-        else:
-            stock_signal = "normal"
-        
-        # For waste/expiry queries, tell the orchestrator so it can suggest discount or sell/donate
-        if user_asked_about_waste:
-            event_type = "near_expiry"
-            suggested_action = "none"
-            context = {"user_asked_about_waste": True}
-        else:
-            event_type = "low_stock" if stock_signal != "normal" else "monitoring"
-            suggested_action = "reorder" if stock_signal != "normal" else "none"
-            context = {}
-        
-        payload = {
-            "inventory_id": item['inventory_id'],
-            "event_type": event_type,
-            "remaining_stock": remaining_stock,
-            "suggested_action": suggested_action,
-            "stock_signal": stock_signal,
-            "consumption_signal": "normal",
-            "forecasted_demand": forecasted_demand,
-            "item_data": {
-                "item_name": item.get('item_name'),
-                "category": item.get('category'),
-                "form": item.get('form'),
-                "use": item.get('usage'),
-                "min_stock": min_stock,
-                "max_capacity": item.get('max_capacity', 1000),
-                "vendor_id": item.get('vendor_id'),
-                "expiry_date": _serialize_date(item.get('expiry_date')),
-                "selling_price": float(item.get('selling_price')) if item.get('selling_price') is not None else None,
-            },
-            "consumption_history": consumption_history[:10],
-            "context": context,
-        }
-        
+        # Limit batch size to avoid read timeout; use up to 8 items and 60s timeout
+        batch_items = items[:8]
+        payload_intent = "waste" if user_asked_about_waste else intent
+        payloads = [_build_orchestrator_payload(it, user_asked_about_waste, intent=payload_intent) for it in batch_items]
+        response = requests.post(
+            f"{DECISION_ORCHESTRATOR_URL}/orchestrate_batch",
+            json={"items": payloads, "user_asked_about_waste": user_asked_about_waste},
+            timeout=60,
+        )
+        if not response.ok:
+            if response.status_code == 404:
+                return None, "Batch returned 404 — restart the Decision Orchestrator (port 9000) so it loads the latest code with /orchestrate_batch."
+            return None, f"Batch returned {response.status_code}"
+        data = response.json()
+        recs = data.get("recommendations", [])
+        # Return list of same shape as single orchestrate: each element is full response with "recommendation" key
+        return recs, None
+    except Exception as e:
+        logger.error(f"Batch orchestrator failed: {e}")
+        return None, str(e)[:150]
+
+
+def call_decision_orchestrator(item: Dict, user_asked_about_waste: bool = False, intent: str = "general") -> Tuple[Optional[Dict], Optional[str]]:
+    """Call the Decision Orchestrator Agent for an item. Pass intent so orchestrator runs only relevant subagents."""
+    try:
+        payload = _build_orchestrator_payload(item, user_asked_about_waste, intent=intent)
         response = requests.post(f"{DECISION_ORCHESTRATOR_URL}/orchestrate", json=payload, timeout=15)
         if response.ok:
             return response.json(), None
@@ -551,6 +591,8 @@ def _format_recommendation_line(
     extras = []
     if rec.get("suggested_discount_percent") is not None:
         extras.append(f"Discount: {rec.get('suggested_discount_percent')}%")
+    if rec.get("suggested_price_increase_percent") is not None:
+        extras.append(f"Price increase: {rec.get('suggested_price_increase_percent')}%")
     if rec.get("suggested_selling_price") is not None:
         extras.append(f"Sell at: {rec.get('suggested_selling_price')}")
     if rec.get("bundle_suggestion"):
@@ -579,11 +621,11 @@ def _format_recommendation_line(
     if extras:
         parts.append(" | " + ", ".join(extras))
     if include_reason and action.lower() not in ("donate", "bundle", "discount"):
-        # Don't append explanation for waste actions (we already show rule-based reasoning above; explanation often says "no action")
+        # Don't append explanation when it's generic/error (no action, unable to generate, subagent down)
         explanation = recommendation.get("explanation", {})
         if isinstance(explanation, dict) and explanation.get("explanation"):
             expl = (explanation.get("explanation") or "").strip()
-            if expl and "no action" not in expl.lower() and "recommended action is to none" not in expl.lower():
+            if expl and "no action" not in expl.lower() and "recommended action is to none" not in expl.lower() and "unable to generate explanation" not in expl.lower():
                 parts.append(f" Reason: {expl[:150]}" + ("..." if len(expl) > 150 else ""))
             elif not reasoning and expl:
                 parts.append(f" Reason: {expl[:150]}" + ("..." if len(expl) > 150 else ""))
@@ -633,18 +675,18 @@ def process_proactive_summary(session_id: str = None) -> Dict:
 
     # Process up to 2 items per category through the full decision pipeline (subagents: risk, feasibility, cost, explanation)
     categories = [
-        ("Waste / Near expiry", near_expiry[:2], True),   # user_asked_about_waste=True
-        ("Out of stock", out_of_stock[:2], False),
-        ("Low stock", low_stock[:2], False),
-        ("Overstock", overstock[:2], False),
+        ("Waste / Near expiry", near_expiry[:2], True, "waste"),   # user_asked_about_waste=True
+        ("Out of stock", out_of_stock[:2], False, "reorder"),
+        ("Low stock", low_stock[:2], False, "reorder"),
+        ("Overstock", overstock[:2], False, "general"),
     ]
     suggestions_saved = 0
-    for label, items, waste_intent in categories:
+    for label, items, waste_intent, category_intent in categories:
         if not items:
             continue
         lines.append(f"**{label}**")
         for item in items:
-            rec, err = call_decision_orchestrator(item, user_asked_about_waste=waste_intent)
+            rec, err = call_decision_orchestrator(item, user_asked_about_waste=waste_intent, intent=category_intent)
             if err:
                 lines.append(f"• {item.get('item_name', 'Item')}: Could not get recommendation — {err}")
                 continue
@@ -664,11 +706,30 @@ def process_proactive_summary(session_id: str = None) -> Dict:
     }
 
 
+def _detect_chat_intent(query_lower: str) -> str:
+    """Detect primary intent so we return only relevant info. One intent per query."""
+    if not query_lower:
+        return "general"
+    # Explicit intents (order matters: more specific first)
+    if any(w in query_lower for w in ["stock for", "stock of", "tell me stock", "what is the stock", "how much", "how many", "current stock", "stock level"]):
+        return "stock"
+    if any(w in query_lower for w in ["forecast demand", "demand for", "demand forecast"]):
+        return "demand"
+    if any(w in query_lower for w in ["waste", "donate", "sell soon", "expir", "expiry", "going to waste", "sell or donate", "anything to sell", "anything to donate"]):
+        return "waste"
+    if any(w in query_lower for w in ["pricing", "price", "discount %", "discount percent", "increase price", "markup"]):
+        return "pricing"
+    if any(w in query_lower for w in ["low stock", "reorder", "check inventory", "out of stock", "need to order", "what to reorder"]):
+        return "reorder"
+    return "general"
+
+
 def process_chat_query(query: str, session_id: str = None) -> Dict:
-    """Process a chat query: check inventory, call decision agent, store suggestions."""
+    """Process a chat query: check inventory, call decision agent, store suggestions. Filter by intent."""
     query_lower = query.lower().strip()
     query_tokens = [t for t in query.split() if t]
-    
+    intent = _detect_chat_intent(query_lower)
+
     # Check if this is a question that should trigger suggestions
     should_generate_suggestions = any(word in query_lower for word in [
         "suggest", "recommend", "what should", "what do", "check", "analyze",
@@ -681,15 +742,36 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
     ])
     if waste_trigger:
         should_generate_suggestions = True
+    if intent == "reorder":
+        should_generate_suggestions = True
+    if intent == "pricing":
+        should_generate_suggestions = True
 
     # Get items from Inventory Agent (single place that sees DB for user query).
     # Inventory Agent uses LLM to understand any phrasing (e.g. "near expiry items", "what's going on waste").
     items, inv_err, inventory_query_type = call_inventory_agent_query(query)
+    # Force item set by intent so we only return relevant data (use subagents/DB, not everything)
+    if intent == "reorder":
+        alerts = get_alerts()
+        out_of_stock = alerts.get("out_of_stock", [])
+        low_stock = alerts.get("low_stock", [])
+        out_ids = {i["inventory_id"] for i in out_of_stock}
+        items = list(out_of_stock) + [i for i in low_stock if i["inventory_id"] not in out_ids]
+        inventory_query_type = "low_stock" if items else "out_of_stock"
+    elif intent == "waste":
+        items = get_near_expiry_items(within_days=14)
+        if not items and inv_err:
+            items = get_items_needing_attention(query)
+        inventory_query_type = "near_expiry"
+    elif intent == "pricing":
+        pricing_items = get_near_expiry_items(within_days=14)
+        items = pricing_items if pricing_items else items
+        inventory_query_type = "near_expiry"
     # Only auto-enable recommendations for intents that imply "give me actions" (not for simple stock lookups)
     if items and inventory_query_type in ("near_expiry", "low_stock", "out_of_stock", "overstock", "demand"):
         should_generate_suggestions = True
     # Use Inventory Agent's interpretation: if it said "near_expiry", treat as waste
-    is_waste_query = waste_trigger or (inventory_query_type == "near_expiry")
+    is_waste_query = (intent == "waste") or waste_trigger or (inventory_query_type == "near_expiry")
     # If we have items and any has expiry within 14 days, run waste intervention (discount/bundle/donate)
     if items and not is_waste_query:
         try:
@@ -780,6 +862,33 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                     if items:
                         break
 
+    # "forecast demand for X" / "demand for X" -> resolve items by name so we return demand for that item only
+    query_looks_like_demand_for_item = "forecast demand for" in query_lower or "demand for" in query_lower
+    if query_looks_like_demand_for_item:
+        name_part = None
+        if "forecast demand for " in query_lower:
+            name_part = query_lower.split("forecast demand for ", 1)[-1].strip()
+        elif "demand for " in query_lower:
+            name_part = query_lower.split("demand for ", 1)[-1].strip()
+        if name_part and len(name_part) < 50:
+            name_part = name_part.rstrip("?.!,")
+            demand_items = get_items_by_name(name_part)
+            if demand_items:
+                items = demand_items
+
+    # "for X" (e.g. "for honey", "what about for honey") -> try to resolve as single-item stock/demand
+    if not items and " for " in query_lower and len(query_tokens) <= 5:
+        if query_lower.strip().startswith("for "):
+            name_part = query_lower.replace("for ", "", 1).strip().rstrip("?.!,")
+            if name_part and len(name_part) < 40:
+                items = get_items_by_name(name_part)
+        else:
+            idx = query_lower.find(" for ")
+            if idx != -1:
+                name_part = query_lower[idx + 5:].strip().rstrip("?.!,").split()[0] if query_lower[idx + 5:] else None
+                if name_part and len(name_part) < 40:
+                    items = get_items_by_name(name_part)
+
     # When user asked about waste/expiry (or Inventory said near_expiry) and we still have no items, try local near-expiry then by-name
     if not items and is_waste_query:
         items = get_near_expiry_items(within_days=14)
@@ -800,6 +909,21 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
     
     suggestions_generated = []
     answer_parts = []
+    product_name = _extract_product_name_from_query(query_lower)
+
+    # "forecast demand for X" / "demand for X" -> return forecast for that item only (no recommendations)
+    if query_looks_like_demand_for_item and items:
+        for item in items[:10]:
+            name = item.get("item_name", "Item")
+            consumption_history = get_consumption_history(item.get("inventory_id"))
+            forecasted_demand = calculate_forecasted_demand(consumption_history)
+            demand_floor = get_demand_floor(item.get("inventory_id", ""))
+            forecasted_demand = max(forecasted_demand, demand_floor)
+            if forecasted_demand <= 0:
+                forecasted_demand = 25.0
+            answer_parts.append(f"{name}: forecasted demand {forecasted_demand:.1f} units/day (next 7 days)")
+        if answer_parts:
+            return {"answer": "\n".join(answer_parts), "suggestions_count": 0, "suggestions": []}
 
     # Simple stock lookup: "stock for apple", "tell me the stock for apple" — return stock info only, no recommendations
     query_looks_like_stock_question = any(phrase in query_lower for phrase in [
@@ -814,7 +938,13 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
         )
     )
     if stock_lookup_only:
-        for item in items[:10]:
+        # When query names a product (e.g. "stock for honey"), show only that product's stock
+        display_items = items
+        if product_name:
+            filtered = [i for i in items if product_name.lower() in (i.get("item_name") or "").lower()]
+            if filtered:
+                display_items = filtered
+        for item in display_items[:10]:
             name = item.get("item_name", "Item")
             stock = item.get("remaining_stock")
             if stock is None:
@@ -847,44 +977,104 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
         answer_parts.append("Here are my recommendations:\n")
         errors = []
 
-        # Process each item through decision orchestrator (pass waste intent for waste/expiry queries).
-        # Each item = 1 POST /orchestrate = subagents + LLM call; limit to 5 to avoid Mistral rate limit (429).
-        for item in items[:5]:
-            try:
-                recommendation, err = call_decision_orchestrator(item, user_asked_about_waste=is_waste_query)
-                if err:
-                    errors.append(f"{item.get('item_name', item.get('inventory_id', '?'))}: {err}")
-                    answer_parts.append(f"• {item.get('item_name', 'Item')}: Could not get recommendation — {err}")
-                    continue
-                if recommendation:
-                    # Save suggestion to database
-                    suggestion_id = save_suggestion(query, item, recommendation)
-                    if suggestion_id:
-                        suggestions_generated.append({
-                            "item": item['item_name'],
-                            "action": recommendation.get('recommendation', {}).get('action', 'none'),
-                            "priority": recommendation.get('recommendation', {}).get('priority', 'Medium'),
-                            "suggestion_id": suggestion_id
-                        })
-                        no_expiry = is_waste_query and not item.get("expiry_date")
-                        answer_parts.append(_format_recommendation_line(
-                            item['item_name'], recommendation, include_reason=True,
-                            item=item, query_type=inventory_query_type,
-                            no_expiry_hint=no_expiry,
-                        ))
+        # Waste/expiry: one batch request. Sort by expiry (soonest first) so DISCOUNT candidates (near-term expiry) get into the batch.
+        if is_waste_query and items:
+            from datetime import date as _date
+            def _expiry_sort_key(it):
+                ed = it.get("expiry_date")
+                if ed is None:
+                    return (_date.max,)
+                try:
+                    d = ed if isinstance(ed, _date) else _date.fromisoformat(str(ed)[:10])
+                    return (d,)
+                except Exception:
+                    return (_date.max,)
+            waste_items_sorted = sorted(items, key=_expiry_sort_key)
+            batch_size = 8  # include more items so DISCOUNT/BUNDLE/DONATE mix appears
+            recs, batch_err = call_decision_orchestrator_batch(waste_items_sorted[:batch_size], user_asked_about_waste=True, intent="waste")
+            if batch_err:
+                errors.append(batch_err)
+                answer_parts.append(f"• Could not get recommendations — {batch_err}")
+            elif recs:
+                items_by_id = {it["inventory_id"]: it for it in items}
+                waste_actions = ("donate", "discount", "bundle")
+                for rec in recs:
+                    inv_id = rec.get("inventory_id")
+                    item = items_by_id.get(inv_id)
+                    if not item:
+                        continue
+                    rec_action = (rec.get("recommendation") or {}).get("action", "")
+                    # Intent filter: waste query -> only show donate, discount, bundle (not hold or price_increase)
+                    if intent == "waste" and rec_action not in waste_actions:
+                        continue
+                    # Intent filter: pricing -> only show lines with a pricing %
+                    if intent == "pricing":
+                        r = rec.get("recommendation") or {}
+                        if r.get("suggested_discount_percent") is None and r.get("suggested_price_increase_percent") is None:
+                            continue
+                    recommendation = rec  # full response shape: has "recommendation" key
+                    try:
+                        suggestion_id = save_suggestion(query, item, recommendation)
+                        if suggestion_id:
+                            suggestions_generated.append({
+                                "item": item["item_name"],
+                                "action": recommendation.get("recommendation", {}).get("action", "none"),
+                                "priority": recommendation.get("recommendation", {}).get("priority", "Medium"),
+                                "suggestion_id": suggestion_id,
+                            })
+                            no_expiry = not item.get("expiry_date")
+                            answer_parts.append(_format_recommendation_line(
+                                item["item_name"], recommendation, include_reason=True,
+                                item=item, query_type=inventory_query_type,
+                                no_expiry_hint=no_expiry,
+                            ))
+                        else:
+                            errors.append(f"{item.get('item_name')}: Failed to save suggestion.")
+                    except Exception as e:
+                        logger.error(f"Error processing batch item {inv_id}: {e}")
+                        errors.append(f"{item.get('item_name', 'Item')}: {str(e)[:80]}")
+            else:
+                answer_parts.append("• No recommendations returned from batch.")
+        else:
+            # Non-waste: reorder path (uses orchestrator with user_asked_about_waste=False -> reorder suggestions)
+            for item in items[:8]:
+                try:
+                    recommendation, err = call_decision_orchestrator(item, user_asked_about_waste=False, intent=intent)
+                    if err:
+                        errors.append(f"{item.get('item_name', item.get('inventory_id', '?'))}: {err}")
+                        answer_parts.append(f"• {item.get('item_name', 'Item')}: Could not get recommendation — {err}")
+                        continue
+                    if recommendation:
+                        rec_action = (recommendation.get("recommendation") or {}).get("action", "")
+                        # Intent reorder: only show reorder actions (no waste suggestions)
+                        if intent == "reorder" and rec_action != "reorder":
+                            continue
+                        suggestion_id = save_suggestion(query, item, recommendation)
+                        if suggestion_id:
+                            suggestions_generated.append({
+                                "item": item["item_name"],
+                                "action": rec_action,
+                                "priority": recommendation.get("recommendation", {}).get("priority", "Medium"),
+                                "suggestion_id": suggestion_id,
+                            })
+                            answer_parts.append(_format_recommendation_line(
+                                item["item_name"], recommendation, include_reason=True,
+                                item=item, query_type=inventory_query_type,
+                                no_expiry_hint=False,
+                            ))
+                        else:
+                            errors.append(f"{item.get('item_name')}: Failed to save suggestion to database.")
                     else:
-                        errors.append(f"{item.get('item_name')}: Failed to save suggestion to database.")
-                else:
-                    errors.append(f"{item.get('item_name')}: No recommendation returned.")
-            except Exception as e:
-                logger.error(f"Error processing item {item.get('inventory_id')}: {e}")
-                errors.append(f"{item.get('item_name', 'Item')}: {str(e)[:80]}")
-                answer_parts.append(f"• {item.get('item_name', 'Item')}: Error — {str(e)[:80]}")
+                        errors.append(f"{item.get('item_name')}: No recommendation returned.")
+                except Exception as e:
+                    logger.error(f"Error processing item {item.get('inventory_id')}: {e}")
+                    errors.append(f"{item.get('item_name', 'Item')}: {str(e)[:80]}")
+                    answer_parts.append(f"• {item.get('item_name', 'Item')}: Error — {str(e)[:80]}")
 
         if suggestions_generated:
             answer_parts.append(f"\n✅ Generated {len(suggestions_generated)} suggestion(s). Check the Suggestion Log to see all details.")
         elif errors:
-            answer_parts.append("\n⚠️ No suggestions could be saved. Common causes: Decision Orchestrator not running (start it on port 9000), or subagents (risk, feasibility, cost, explanation) not running. Check server logs for details.")
+            answer_parts.append("\n⚠️ No suggestions could be saved. Common causes: Decision Orchestrator not running (start it on port 9000), batch endpoint missing (restart the orchestrator to load latest code), or subagents (risk, feasibility, cost, explanation) not running. Check server logs for details.")
         else:
             answer_parts.append("\nNo suggestions were generated for these items.")
     

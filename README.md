@@ -184,3 +184,16 @@ The dataset includes:
 - **Backend**: Java
 - **Data Processing**: Python, Pandas, NumPy
 - **AI/ML**: (To be implemented in Agents folder)
+# Subagents (from Agents/decision-orchestration-agent)
+cd Agents/decision-orchestration-agent/subagents/risk-assessment && PORT=9004 python3 agent.py
+cd Agents/decision-orchestration-agent/subagents/feasibility && PORT=9001 python3 agent.py
+cd Agents/decision-orchestration-agent/subagents/cost-impact && PORT=9002 python3 agent.py
+cd Agents/decision-orchestration-agent/subagents/explanation && PORT=9003 python3 agent.py
+cd Agents/decision-orchestration-agent/subagents/food-bank && PORT=9007 python3 agent.py
+
+# Inventory
+cd Agents/inventory-agent && PORT=9005 python3 agent.py
+
+# Orchestrator & Chat
+cd Agents/decision-orchestration-agent && PORT=9000 python3 agent.py
+cd Agents/decision-orchestration-agent/subagents/chat && PORT=9006 python3 agent.py

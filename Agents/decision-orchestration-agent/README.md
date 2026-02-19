@@ -34,6 +34,17 @@ Coordinates multiple sub-agents to produce prescriptive inventory interventions.
    - Uses Mistral LLM for natural language explanations
    - Falls back to template-based explanations if LLM unavailable
 
+5. **Food Bank** (Port 9007)
+   - Returns nearest food banks for donation suggestions
+   - Used when recommending DONATE
+
+### Why are subagents "down" or connection refused?
+
+Subagents are **separate processes**. They do not start with the Decision Orchestrator. If you only run `python agent.py` in the orchestrator folder, the orchestrator runs on port 9000 but **no subagent is running** on 9001, 9002, 9003, 9004, or 9007, so you get "Connection refused" for those ports.
+
+- **To have full behavior** (risk, feasibility, cost, explanation, food bank): start each subagent in its own terminal (see **Usage** below).
+- **If you don't start them**: the orchestrator still completes and uses fallbacks (e.g. rule-based DONATE/BUNDLE/DISCOUNT). You may see "Feasibility check failed", "Explanation generation failed", etc., but recommendations are still produced.
+
 ### Graph Flow
 
 1. **Parallel Execution**: Risk Assessment, Feasibility, and Cost Impact run in parallel
@@ -72,6 +83,7 @@ RISK_AGENT_URL=http://localhost:9004/risk
 FEASIBILITY_AGENT_URL=http://localhost:9001/feasibility
 COST_IMPACT_AGENT_URL=http://localhost:9002/cost-impact
 EXPLANATION_AGENT_URL=http://localhost:9003/explain
+FOOD_BANK_AGENT_URL=http://localhost:9007/nearest
 
 PORT=9000
 ```
@@ -84,25 +96,26 @@ Start the orchestrator:
 python agent.py
 ```
 
-Start subagents (in separate terminals):
+Start subagents (each in its own terminal; from `Agents/decision-orchestration-agent`):
 
 ```bash
-# Risk Assessment
-cd subagents/risk-assessment
-python agent.py
+# Terminal 2 – Risk Assessment (9004)
+cd subagents/risk-assessment && python agent.py
 
-# Feasibility
-cd subagents/feasibility
-python agent.py
+# Terminal 3 – Feasibility (9001)
+cd subagents/feasibility && python agent.py
 
-# Cost Impact
-cd subagents/cost-impact
-python agent.py
+# Terminal 4 – Cost Impact (9002)
+cd subagents/cost-impact && python agent.py
 
-# Explanation
-cd subagents/explanation
-python agent.py
+# Terminal 5 – Explanation (9003)
+cd subagents/explanation && python agent.py
+
+# Terminal 6 – Food Bank (9007)
+cd subagents/food-bank && python agent.py
 ```
+
+If you don't start these, the orchestrator still runs and returns recommendations using rule-based logic and fallbacks; you'll see "Connection refused" or "failed" in logs for the subagents that aren't running.
 
 ## Endpoints
 
