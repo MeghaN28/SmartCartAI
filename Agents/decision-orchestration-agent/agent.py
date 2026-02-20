@@ -90,6 +90,10 @@ class DecisionOrchestratorState(TypedDict, total=False):
     nearest_food_banks: List[dict]  # when discard/donate: for donation suggestion
     explanation: dict
     
+    # Decision Engine output (sets recommended_action before optional food bank call)
+    recommended_action: str  # donate | discount | bundle | reorder | hold | price_increase | ...
+    _decision_overrides: dict  # optional overrides from decision engine for synthesize
+    
     # Final Output
     recommendation: dict
     error: str
@@ -436,15 +440,12 @@ def pick_one_waste_suggestion(
     item_name: str,
     forecasted_demand: Optional[float],
     selling_price: Optional[float],
+    preferred_waste_action: Optional[str] = None,
+    allow_donate_without_banks: bool = False,
 ) -> tuple:
     """
-    Select ONE intervention from subagent outputs using rule matrix (user spec):
-    1. Lot high + demand good -> no action (hold)
-    2. Lot high + demand low -> discount
-    3. Lot high + demand low + near expiry -> donate (uses food_bank subagent)
-    4. Medium lot + near expiry + demand high -> bundle (uses similar_items)
-    5. Lot high + demand high + expiry not near -> increase price by %
-    Returns (action_key, reasoning, expected_outcome, rec_overrides).
+    Select ONE intervention from subagent outputs using rule matrix (user spec).
+    If preferred_waste_action is set ("discount"|"donate"|"bundle"), only return that action when the item fits; else return hold.
     """
     fc = feasibility_check or {}
     ci = cost_impact or {}
@@ -491,13 +492,19 @@ def pick_one_waste_suggestion(
             o["suggested_selling_price"] = increased_price
         return o
 
+    def _maybe_hold(action_key: str, reasoning: str, outcome: str, overrides: dict) -> tuple:
+        """If user asked for a specific waste action, only return that action; else return hold."""
+        if preferred_waste_action and action_key != preferred_waste_action:
+            return ("hold", f"No {preferred_waste_action} recommendation for {item_name} based on current stock and demand.", "Monitor levels.", _overrides())
+        return (action_key, reasoning, outcome, overrides)
+
     # 1. Lot high + demand good -> no action
     if lot_high and demand_high:
         reasoning = (
             f"Lot is high ({remaining_stock} units) and demand is good ({daily_demand:.1f} units/day). "
             f"No action needed for {item_name}; monitor as usual."
         )
-        return ("hold", reasoning, "Stock and demand are healthy; no intervention.", _overrides())
+        return _maybe_hold("hold", reasoning, "Stock and demand are healthy; no intervention.", _overrides())
 
     # 2. Lot high + demand high + expiry not near -> increase price by %
     if lot_high and demand_high and expiry_not_near and within_budget and is_feasible and sp and sp > 0:
@@ -507,25 +514,32 @@ def pick_one_waste_suggestion(
             f"Lot is high ({remaining_stock}), demand is strong ({daily_demand:.1f}/day), and expiry is not soon. "
             f"Increase price by {price_increase_pct}% for {item_name}. Suggested price: ${increased_price}."
         )
-        return (
+        return _maybe_hold(
             "price_increase",
             reasoning,
             "Capture value with a modest price increase.",
             _overrides(price_increase_pct=price_increase_pct, increased_price=increased_price),
         )
 
-    # 3. Lot high + demand low + near expiry -> donate (use food bank subagent)
-    if lot_high and demand_low and near_expiry and within_budget and (nearest_food_banks or []):
-        fb = nearest_food_banks[0]
-        name = (fb.get("name") or "nearest food bank").strip()
-        addr = (fb.get("address") or "").strip()
-        reasoning = (
-            f"Lot is high ({remaining_stock}), demand is low ({daily_demand:.1f}/day), and near expiry ({days_until_expiry} days). "
-            f"Donating {item_name} to {name} minimizes waste."
-        )
-        if addr:
-            reasoning += f" Donate to: {name}, {addr}."
-        return ("donate", reasoning, "Zero waste and social value.", _overrides(food_banks=[fb]))
+    # 3. Lot high + demand low + near expiry -> donate (use food bank subagent when available)
+    if lot_high and demand_low and near_expiry and within_budget and (nearest_food_banks or allow_donate_without_banks):
+        if nearest_food_banks:
+            fb = nearest_food_banks[0]
+            name = (fb.get("name") or "nearest food bank").strip()
+            addr = (fb.get("address") or "").strip()
+            reasoning = (
+                f"Lot is high ({remaining_stock}), demand is low ({daily_demand:.1f}/day), and near expiry ({days_until_expiry} days). "
+                f"Donating {item_name} to {name} minimizes waste."
+            )
+            if addr:
+                reasoning += f" Donate to: {name}, {addr}."
+            return _maybe_hold("donate", reasoning, "Zero waste and social value.", _overrides(food_banks=[fb]))
+        else:
+            reasoning = (
+                f"Lot is high ({remaining_stock}), demand is low ({daily_demand:.1f}/day), and near expiry ({days_until_expiry} days). "
+                f"Donating {item_name} to a nearby food bank minimizes waste."
+            )
+            return _maybe_hold("donate", reasoning, "Zero waste and social value.", _overrides(food_banks=[]))
 
     # 4. Lot high + demand low -> discount
     if lot_high and demand_low and within_budget and is_feasible:
@@ -539,7 +553,7 @@ def pick_one_waste_suggestion(
         )
         if price is not None:
             reasoning += f" Suggested price: ${price}."
-        return ("discount", reasoning, "Clear stock and recover revenue.", _overrides(discount_pct=pct, price=price))
+        return _maybe_hold("discount", reasoning, "Clear stock and recover revenue.", _overrides(discount_pct=pct, price=price))
 
     # 5. Medium lot + near expiry + demand high -> bundle with similar (use similar_items from retrieval)
     if lot_medium and near_expiry and demand_high and has_similar and within_budget and is_feasible:
@@ -549,23 +563,56 @@ def pick_one_waste_suggestion(
             f"Medium lot ({remaining_stock}), near expiry ({days_until_expiry} days), demand good ({daily_demand:.1f}/day). "
             f"Bundle {item_name} with {bundle_name} to increase sell-through."
         )
-        return (
+        return _maybe_hold(
             "bundle",
             reasoning,
             "Better sell-through via bundled offer.",
             _overrides(bundle=f"Bundle with: {bundle_name}"),
         )
 
-    # Fallback: near expiry + food bank -> donate
-    if near_expiry and (nearest_food_banks or []) and within_budget:
-        fb = nearest_food_banks[0]
-        name = (fb.get("name") or "nearest food bank").strip()
-        reasoning = f"Near expiry. Donating {item_name} to {name} minimizes waste."
-        return ("donate", reasoning, "Zero waste and social value.", _overrides(food_banks=[fb]))
+    # Fallback: near expiry + (food bank or allow_donate_without_banks) -> donate
+    if near_expiry and (nearest_food_banks or allow_donate_without_banks) and within_budget:
+        if nearest_food_banks:
+            fb = nearest_food_banks[0]
+            name = (fb.get("name") or "nearest food bank").strip()
+            reasoning = f"Near expiry. Donating {item_name} to {name} minimizes waste."
+            return _maybe_hold("donate", reasoning, "Zero waste and social value.", _overrides(food_banks=[fb]))
+        reasoning = f"Near expiry. Donating {item_name} to a nearby food bank minimizes waste."
+        return _maybe_hold("donate", reasoning, "Zero waste and social value.", _overrides(food_banks=[]))
+
+    # When user asked for a specific action, use relaxed rules so "which can be discounted/donated/bundled?" returns useful suggestions for near-expiry items
+    if preferred_waste_action and near_expiry and within_budget and is_feasible:
+        has_stock = lot_high or lot_medium
+        if preferred_waste_action == "discount" and has_stock and sp and sp > 0:
+            pct = discount_pct if discount_pct and discount_pct > 0 else 15
+            price = computed_suggested_price or (round(sp * (1 - pct / 100.0), 2) if sp and pct > 0 else None)
+            reasoning = (
+                f"Near expiry ({days_until_expiry} days), stock {remaining_stock}. "
+                f"A {pct}% discount for {item_name} can help clear stock before expiry."
+            )
+            if price is not None:
+                reasoning += f" Suggested price: ${price}."
+            return ("discount", reasoning, "Clear stock before expiry.", _overrides(discount_pct=pct, price=price))
+        if preferred_waste_action == "donate" and (nearest_food_banks or allow_donate_without_banks):
+            if nearest_food_banks:
+                fb = nearest_food_banks[0]
+                name = (fb.get("name") or "nearest food bank").strip()
+                reasoning = f"Near expiry ({days_until_expiry} days). Donating {item_name} to {name} minimizes waste."
+                return ("donate", reasoning, "Zero waste and social value.", _overrides(food_banks=[fb]))
+            reasoning = f"Near expiry ({days_until_expiry} days). Donating {item_name} to a nearby food bank minimizes waste."
+            return ("donate", reasoning, "Zero waste and social value.", _overrides(food_banks=[]))
+        if preferred_waste_action == "bundle" and has_stock and has_similar:
+            first = compatible_items[0]
+            bundle_name = (first.get("item_name") or "similar item").strip()
+            reasoning = (
+                f"Near expiry ({days_until_expiry} days), stock {remaining_stock}. "
+                f"Bundle {item_name} with {bundle_name} to increase sell-through."
+            )
+            return ("bundle", reasoning, "Better sell-through via bundled offer.", _overrides(bundle=f"Bundle with: {bundle_name}"))
 
     # Default: hold
     reasoning = f"No urgent action for {item_name}. Stock {remaining_stock}, demand {daily_demand:.1f}/day."
-    return ("hold", reasoning, "Monitor levels.", _overrides())
+    return _maybe_hold("hold", reasoning, "Monitor levels.", _overrides())
 
 
 # -----------------------------------------------------------------------------
@@ -646,18 +693,71 @@ def assess_cost_impact(state: DecisionOrchestratorState) -> dict:
     return {"cost_impact": cost_impact}
 
 
-def get_donation_options(state: DecisionOrchestratorState) -> dict:
-    """Call Food Bank subagent when action is discard or user asked about waste/donate."""
-    suggested_action = state.get("suggested_action", "")
-    event_type = state.get("event_type", "")
+def run_decision_engine(state: DecisionOrchestratorState) -> dict:
+    """Run deterministic decision rules; set recommended_action and _decision_overrides. Food bank is called only when recommended_action == donate (or high expiry risk)."""
+    inventory_id = state.get("inventory_id", "")
+    item_data = state.get("item_data", {})
+    remaining = state.get("remaining_stock", 0)
+    forecasted = state.get("forecasted_demand")
+    suggested_action = state.get("suggested_action", "none")
     user_asked_about_waste = (state.get("context") or {}).get("user_asked_about_waste", False)
+    preferred_waste_action = (state.get("context") or {}).get("waste_action_preference")
+
+    # Reorder path: no waste decision needed
+    if suggested_action == "reorder":
+        return {"recommended_action": "reorder", "_decision_overrides": None}
+
+    # Non-waste path: hold or reorder
+    if not user_asked_about_waste and state.get("event_type") != "near_expiry":
+        return {"recommended_action": suggested_action or "hold", "_decision_overrides": None}
+
+    # Waste/expiry path: run rule matrix with empty food banks (we fetch food banks only if decision is donate)
+    historical_context = retrieve_historical_context(inventory_id)
+    expiry_date = item_data.get("expiry_date") or (historical_context.get("inventory") or {}).get("expiry_date")
+    days_until_expiry = None
+    if expiry_date:
+        try:
+            from datetime import date
+            e = expiry_date if isinstance(expiry_date, date) else date.fromisoformat(str(expiry_date)[:10])
+            days_until_expiry = (e - date.today()).days
+        except Exception:
+            days_until_expiry = None
+    selling_price = item_data.get("selling_price") or (historical_context.get("inventory") or {}).get("selling_price")
+    bundle_candidates = retrieve_bundle_candidates(inventory_id, item_data, limit=10)
+    similar_items = retrieve_similar_items_by_embedding(inventory_id, limit=5)
+
+    action_key, reasoning, expected_outcome, overrides = pick_one_waste_suggestion(
+        state.get("risk_assessment", {}),
+        state.get("feasibility_check", {}),
+        state.get("cost_impact", {}),
+        [],  # no food banks yet; fetch only when action == donate
+        bundle_candidates,
+        similar_items,
+        remaining,
+        days_until_expiry,
+        item_data.get("item_name", "Item"),
+        forecasted,
+        selling_price,
+        preferred_waste_action=preferred_waste_action,
+        allow_donate_without_banks=True,
+    )
+    return {
+        "recommended_action": action_key,
+        "_decision_overrides": {"reasoning": reasoning, "expected_outcome": expected_outcome, **overrides},
+    }
+
+
+def get_donation_options(state: DecisionOrchestratorState) -> dict:
+    """Call Food Bank subagent ONLY when recommended_action == donate OR (expiry risk high and near expiry)."""
+    recommended_action = state.get("recommended_action", "")
+    risk_level = (state.get("risk_assessment") or {}).get("risk_level", "")
+    event_type = state.get("event_type", "")
     should_fetch = (
-        suggested_action == "discard"
-        or event_type == "near_expiry"
-        or user_asked_about_waste
+        recommended_action == "donate"
+        or (risk_level in ("critical", "high") and event_type == "near_expiry")
     )
     if not should_fetch:
-        return {"nearest_food_banks": []}
+        return {"nearest_food_banks": state.get("nearest_food_banks", [])}
     try:
         r = requests.post(SUBAGENT_URLS["food_bank"], json={"limit": 5}, timeout=5)
         if r.ok:
@@ -665,22 +765,30 @@ def get_donation_options(state: DecisionOrchestratorState) -> dict:
             return {"nearest_food_banks": data.get("nearest_food_banks", [])}
     except Exception as e:
         logger.warning(f"Food bank lookup failed: {e}")
-    return {"nearest_food_banks": []}
+    return {"nearest_food_banks": state.get("nearest_food_banks", [])}
 
 
 def generate_explanation(state: DecisionOrchestratorState) -> dict:
-    """Call Explanation Generation subagent."""
+    """Call Explanation Generation subagent with the actual recommended action and full state."""
     inv_id = state.get("inventory_id", "?")
     item_name = (state.get("item_data") or {}).get("item_name", "?")
     logger.info("[Subagent] Calling Explanation | item=%s | inventory_id=%s", item_name, inv_id)
+    # Use the final recommended action (from recommendation or decision engine), not initial suggested_action
+    rec = state.get("recommendation") or {}
+    recommended_action = rec.get("action") or state.get("recommended_action") or state.get("suggested_action") or "none"
+    try:
+        fd = state.get("forecasted_demand")
+        forecasted_demand = float(fd) if fd is not None else 0.0
+    except (TypeError, ValueError):
+        forecasted_demand = 0.0
     payload = {
         "inventory_id": state.get("inventory_id"),
-        "suggested_action": state.get("suggested_action"),
+        "suggested_action": recommended_action,
         "risk_assessment": state.get("risk_assessment", {}),
         "feasibility_check": state.get("feasibility_check", {}),
         "cost_impact": state.get("cost_impact", {}),
         "item_data": state.get("item_data", {}),
-        "forecasted_demand": state.get("forecasted_demand"),
+        "forecasted_demand": forecasted_demand,
         "context": state.get("context", {}),
         "nearest_food_banks": state.get("nearest_food_banks", []),
     }
@@ -849,35 +957,55 @@ Provide a structured recommendation as JSON with:
                     "llm_enhanced": True,
                 }
             elif user_asked_about_waste:
-                # Exactly ONE intervention: DISCOUNT -> BUNDLE -> DONATION (priority order)
-                _pk, reasoning_one, expected_one, overrides = pick_one_waste_suggestion(
-                    state.get("risk_assessment", {}),
-                    state.get("feasibility_check", {}),
-                    state.get("cost_impact", {}),
-                    state.get("nearest_food_banks", []),
-                    bundle_candidates,
-                    similar_items,
-                    state.get("remaining_stock", 0),
-                    days_until_expiry,
-                    item_data.get("item_name", "Item"),
-                    state.get("forecasted_demand"),
-                    selling_price,
-                )
-                recommendation = {
-                    "action": _pk,
-                    "priority": llm_result.get("priority", "Medium"),
-                    "reasoning": reasoning_one,
-                    "expected_outcome": expected_one,
-                    "suggested_discount_percent": overrides.get("suggested_discount_percent"),
-                    "suggested_selling_price": overrides.get("suggested_selling_price"),
-                    "bundle_suggestion": overrides.get("bundle_suggestion"),
-                    "waste_action": strip_markdown(llm_result.get("waste_action") or "") or None,
-                    "discard_reason": discard_reason,
-                    "llm_enhanced": True,
-                }
-                # Apply donation override: store only the chosen food bank(s) for UI
-                if "nearest_food_banks" in overrides:
-                    recommendation["_nearest_food_banks_override"] = overrides["nearest_food_banks"]
+                # Use decision engine result when already computed (pipeline ran decision_engine first)
+                overrides = state.get("_decision_overrides") or {}
+                rec_action = state.get("recommended_action")
+                if rec_action and overrides:
+                    recommendation = {
+                        "action": rec_action,
+                        "priority": llm_result.get("priority", "Medium"),
+                        "reasoning": overrides.get("reasoning", ""),
+                        "expected_outcome": overrides.get("expected_outcome", ""),
+                        "suggested_discount_percent": overrides.get("suggested_discount_percent"),
+                        "suggested_selling_price": overrides.get("suggested_selling_price"),
+                        "bundle_suggestion": overrides.get("bundle_suggestion"),
+                        "waste_action": strip_markdown(llm_result.get("waste_action") or "") or None,
+                        "discard_reason": discard_reason,
+                        "llm_enhanced": True,
+                    }
+                    # Use state's nearest_food_banks (filled when recommended_action was donate)
+                    if rec_action == "donate" and state.get("nearest_food_banks"):
+                        recommendation["_nearest_food_banks_override"] = state["nearest_food_banks"]
+                else:
+                    preferred = (state.get("context") or {}).get("waste_action_preference")
+                    _pk, reasoning_one, expected_one, overrides = pick_one_waste_suggestion(
+                        state.get("risk_assessment", {}),
+                        state.get("feasibility_check", {}),
+                        state.get("cost_impact", {}),
+                        state.get("nearest_food_banks", []),
+                        bundle_candidates,
+                        similar_items,
+                        state.get("remaining_stock", 0),
+                        days_until_expiry,
+                        item_data.get("item_name", "Item"),
+                        state.get("forecasted_demand"),
+                        selling_price,
+                        preferred_waste_action=preferred,
+                    )
+                    recommendation = {
+                        "action": _pk,
+                        "priority": llm_result.get("priority", "Medium"),
+                        "reasoning": reasoning_one,
+                        "expected_outcome": expected_one,
+                        "suggested_discount_percent": overrides.get("suggested_discount_percent"),
+                        "suggested_selling_price": overrides.get("suggested_selling_price"),
+                        "bundle_suggestion": overrides.get("bundle_suggestion"),
+                        "waste_action": strip_markdown(llm_result.get("waste_action") or "") or None,
+                        "discard_reason": discard_reason,
+                        "llm_enhanced": True,
+                    }
+                    if "nearest_food_banks" in overrides:
+                        recommendation["_nearest_food_banks_override"] = overrides["nearest_food_banks"]
             else:
                 extra_parts = []
                 if suggested_discount is not None:
@@ -919,32 +1047,51 @@ Provide a structured recommendation as JSON with:
                     "llm_enhanced": False,
                 }
             elif user_asked_about_waste:
-                _pk, reasoning_one, expected_one, overrides = pick_one_waste_suggestion(
-                    state.get("risk_assessment", {}),
-                    state.get("feasibility_check", {}),
-                    state.get("cost_impact", {}),
-                    state.get("nearest_food_banks", []),
-                    bundle_candidates,
-                    similar_items,
-                    state.get("remaining_stock", 0),
-                    days_until_expiry,
-                    item_data.get("item_name", "Item"),
-                    state.get("forecasted_demand"),
-                    selling_price,
-                )
-                recommendation = {
-                    "action": _pk,
-                    "priority": "Medium",
-                    "reasoning": reasoning_one,
-                    "expected_outcome": expected_one,
-                    "suggested_discount_percent": overrides.get("suggested_discount_percent"),
-                    "suggested_selling_price": overrides.get("suggested_selling_price"),
-                    "bundle_suggestion": overrides.get("bundle_suggestion"),
-                    "discard_reason": None,
-                    "llm_enhanced": False,
-                }
-                if "nearest_food_banks" in overrides:
-                    recommendation["_nearest_food_banks_override"] = overrides["nearest_food_banks"]
+                overrides = state.get("_decision_overrides") or {}
+                rec_action = state.get("recommended_action")
+                if rec_action and overrides:
+                    recommendation = {
+                        "action": rec_action,
+                        "priority": "Medium",
+                        "reasoning": overrides.get("reasoning", ""),
+                        "expected_outcome": overrides.get("expected_outcome", ""),
+                        "suggested_discount_percent": overrides.get("suggested_discount_percent"),
+                        "suggested_selling_price": overrides.get("suggested_selling_price"),
+                        "bundle_suggestion": overrides.get("bundle_suggestion"),
+                        "discard_reason": None,
+                        "llm_enhanced": False,
+                    }
+                    if rec_action == "donate" and state.get("nearest_food_banks"):
+                        recommendation["_nearest_food_banks_override"] = state["nearest_food_banks"]
+                else:
+                    preferred = (state.get("context") or {}).get("waste_action_preference")
+                    _pk, reasoning_one, expected_one, overrides = pick_one_waste_suggestion(
+                        state.get("risk_assessment", {}),
+                        state.get("feasibility_check", {}),
+                        state.get("cost_impact", {}),
+                        state.get("nearest_food_banks", []),
+                        bundle_candidates,
+                        similar_items,
+                        state.get("remaining_stock", 0),
+                        days_until_expiry,
+                        item_data.get("item_name", "Item"),
+                        state.get("forecasted_demand"),
+                        selling_price,
+                        preferred_waste_action=preferred,
+                    )
+                    recommendation = {
+                        "action": _pk,
+                        "priority": "Medium",
+                        "reasoning": reasoning_one,
+                        "expected_outcome": expected_one,
+                        "suggested_discount_percent": overrides.get("suggested_discount_percent"),
+                        "suggested_selling_price": overrides.get("suggested_selling_price"),
+                        "bundle_suggestion": overrides.get("bundle_suggestion"),
+                        "discard_reason": None,
+                        "llm_enhanced": False,
+                    }
+                    if "nearest_food_banks" in overrides:
+                        recommendation["_nearest_food_banks_override"] = overrides["nearest_food_banks"]
             else:
                 recommendation = {
                     "action": suggested_action,
@@ -982,32 +1129,51 @@ Provide a structured recommendation as JSON with:
                 "llm_enhanced": False,
             }
         elif user_asked_about_waste:
-            _pk, reasoning_one, expected_one, overrides = pick_one_waste_suggestion(
-                state.get("risk_assessment", {}),
-                state.get("feasibility_check", {}),
-                state.get("cost_impact", {}),
-                state.get("nearest_food_banks", []),
-                bundle_candidates,
-                similar_items,
-                state.get("remaining_stock", 0),
-                days_until_expiry,
-                item_data.get("item_name", "Item"),
-                state.get("forecasted_demand"),
-                selling_price,
-            )
-            recommendation = {
-                "action": _pk,
-                "priority": priority,
-                "reasoning": reasoning_one,
-                "expected_outcome": expected_one,
-                "suggested_discount_percent": overrides.get("suggested_discount_percent"),
-                "suggested_selling_price": overrides.get("suggested_selling_price"),
-                "bundle_suggestion": overrides.get("bundle_suggestion"),
-                "discard_reason": None,
-                "llm_enhanced": False,
-            }
-            if "nearest_food_banks" in overrides:
-                recommendation["_nearest_food_banks_override"] = overrides["nearest_food_banks"]
+            overrides = state.get("_decision_overrides") or {}
+            rec_action = state.get("recommended_action")
+            if rec_action and overrides:
+                recommendation = {
+                    "action": rec_action,
+                    "priority": priority,
+                    "reasoning": overrides.get("reasoning", ""),
+                    "expected_outcome": overrides.get("expected_outcome", ""),
+                    "suggested_discount_percent": overrides.get("suggested_discount_percent"),
+                    "suggested_selling_price": overrides.get("suggested_selling_price"),
+                    "bundle_suggestion": overrides.get("bundle_suggestion"),
+                    "discard_reason": None,
+                    "llm_enhanced": False,
+                }
+                if rec_action == "donate" and state.get("nearest_food_banks"):
+                    recommendation["_nearest_food_banks_override"] = state["nearest_food_banks"]
+            else:
+                preferred = (state.get("context") or {}).get("waste_action_preference")
+                _pk, reasoning_one, expected_one, overrides = pick_one_waste_suggestion(
+                    state.get("risk_assessment", {}),
+                    state.get("feasibility_check", {}),
+                    state.get("cost_impact", {}),
+                    state.get("nearest_food_banks", []),
+                    bundle_candidates,
+                    similar_items,
+                    state.get("remaining_stock", 0),
+                    days_until_expiry,
+                    item_data.get("item_name", "Item"),
+                    state.get("forecasted_demand"),
+                    selling_price,
+                    preferred_waste_action=preferred,
+                )
+                recommendation = {
+                    "action": _pk,
+                    "priority": priority,
+                    "reasoning": reasoning_one,
+                    "expected_outcome": expected_one,
+                    "suggested_discount_percent": overrides.get("suggested_discount_percent"),
+                    "suggested_selling_price": overrides.get("suggested_selling_price"),
+                    "bundle_suggestion": overrides.get("bundle_suggestion"),
+                    "discard_reason": None,
+                    "llm_enhanced": False,
+                }
+                if "nearest_food_banks" in overrides:
+                    recommendation["_nearest_food_banks_override"] = overrides["nearest_food_banks"]
         else:
             recommendation = {
                 "action": suggested_action,
@@ -1044,52 +1210,44 @@ Provide a structured recommendation as JSON with:
 # -----------------------------------------------------------------------------
 
 
-def _route_by_intent(state: DecisionOrchestratorState) -> str:
-    """Route to the right subagent(s) based on user intent. Returns next node name."""
-    intent = (state.get("context") or {}).get("intent", "general")
-    user_asked_about_waste = (state.get("context") or {}).get("user_asked_about_waste", False)
+def _should_call_food_bank(state: DecisionOrchestratorState) -> str:
+    """Only call food bank when recommended_action == donate or high expiry risk."""
+    recommended_action = state.get("recommended_action", "")
+    risk_level = (state.get("risk_assessment") or {}).get("risk_level", "")
     event_type = state.get("event_type", "")
-    # Pricing & reorder -> Cost-impact subagent
-    if intent in ("pricing", "reorder"):
-        return "assess_cost_impact"
-    # Waste / donate -> Food bank + Feasibility (donation options first, then feasibility for discount/bundle)
-    if intent == "waste" or user_asked_about_waste or event_type == "near_expiry":
+    if recommended_action == "donate" or (risk_level in ("critical", "high") and event_type == "near_expiry"):
         return "get_donation_options"
-    # General (stock, demand, etc.) -> go straight to synthesize (minimal path)
     return "synthesize_recommendation"
 
 
 def build_orchestration_graph() -> StateGraph:
-    """Build the decision orchestration StateGraph. Intent-based: only calls relevant subagents."""
+    """Build the decision orchestration StateGraph. STRICT order: Risk -> Feasibility -> Cost -> Decision -> (Food bank if donate) -> Synthesize -> Explanation."""
     builder = StateGraph(DecisionOrchestratorState)
-    
-    # Nodes
+
     builder.add_node("assess_risk", assess_risk)
     builder.add_node("check_feasibility", check_feasibility)
     builder.add_node("assess_cost_impact", assess_cost_impact)
+    builder.add_node("run_decision_engine", run_decision_engine)
     builder.add_node("get_donation_options", get_donation_options)
-    builder.add_node("generate_explanation", generate_explanation)
     builder.add_node("synthesize_recommendation", synthesize_recommendation)
-    
-    # Intent-based routing: call only the subagent(s) needed for this query
+    builder.add_node("generate_explanation", generate_explanation)
+
+    builder.add_edge(START, "assess_risk")
+    builder.add_edge("assess_risk", "check_feasibility")
+    builder.add_edge("check_feasibility", "assess_cost_impact")
+    builder.add_edge("assess_cost_impact", "run_decision_engine")
     builder.add_conditional_edges(
-        START,
-        _route_by_intent,
+        "run_decision_engine",
+        _should_call_food_bank,
         {
-            "assess_cost_impact": "assess_cost_impact",
             "get_donation_options": "get_donation_options",
             "synthesize_recommendation": "synthesize_recommendation",
         },
     )
-    # After cost-impact (pricing/reorder) -> synthesize -> explanation
-    builder.add_edge("assess_cost_impact", "synthesize_recommendation")
-    # After donation options (waste) -> feasibility for discount/bundle then synthesize
-    builder.add_edge("get_donation_options", "check_feasibility")
-    builder.add_edge("check_feasibility", "synthesize_recommendation")
-    # Synthesize -> explanation -> end
+    builder.add_edge("get_donation_options", "synthesize_recommendation")
     builder.add_edge("synthesize_recommendation", "generate_explanation")
     builder.add_edge("generate_explanation", END)
-    
+
     return builder.compile()
 
 
@@ -1179,10 +1337,12 @@ def _rule_only_waste_recommendations(items: List[dict], user_asked_about_waste: 
             similar_items = retrieve_similar_items_by_embedding(inv_id, limit=3)
         except Exception:
             similar_items = []
+        preferred = (it.get("context") or {}).get("waste_action_preference")
         _pk, reasoning, expected_outcome, overrides = pick_one_waste_suggestion(
             {}, {"is_feasible": True}, {"within_budget": True},
             nearest_food_banks, bundle_candidates, similar_items,
             remaining_stock, days_until_expiry, item_name, forecasted_demand, selling_price,
+            preferred_waste_action=preferred,
         )
         rec = {
             "action": _pk,
@@ -1217,7 +1377,7 @@ def orchestrate_batch():
     items = payload.get("items", [])
     if not items:
         return jsonify({"recommendations": [], "error": "items required"}), 400
-    items = items[:10]
+    items = items[:15]
     graph = get_orchestration_graph()
     results = []
     for it in items:

@@ -357,6 +357,20 @@ Reply with only valid JSON, no markdown: {"intent": "<one of the above>", "produ
     return None
 
 
+def _extract_item_name_for_stock_or_demand(query: str) -> Optional[str]:
+    """Extract product name from 'stock for X', 'tock for X' (typo), 'demand for X', 'forecast demand for X'."""
+    q = query.strip().rstrip("?.!,")
+    if not q:
+        return None
+    q_lower = q.lower()
+    for prefix in ("stock for ", "tock for ", "demand for ", "forecast demand for "):
+        if prefix in q_lower:
+            name = q_lower.split(prefix, 1)[-1].strip()
+            name = name.split()[0] if name else None  # single product name
+            return name if (name and len(name) < 50) else None
+    return None
+
+
 def _extract_item_name_from_waste_query(query: str) -> Optional[str]:
     """Extract a likely item name from a waste-related query, e.g. 'is milk 1l going on waste' -> 'milk 1l'."""
     waste_stopwords = {
@@ -388,6 +402,15 @@ def query_inventory_for_user(query: str) -> Dict:
     """
     query_lower = query.lower().strip()
     query_tokens = [t for t in query.split() if t]
+
+    # "stock for Apple" / "tock for Apple" (typo) / "demand for X" – always look up by name first (reliable, no LLM)
+    stock_or_demand_name = _extract_item_name_for_stock_or_demand(query)
+    if stock_or_demand_name:
+        items = get_items_by_name(stock_or_demand_name)
+        if items is not None:
+            _enrich_items_with_forecast(items)
+            query_type = "demand" if ("demand" in query_lower or "forecast" in query_lower) else "by_name"
+            return {"items": items, "query_type": query_type}
 
     # LLM-based intent: understand any user phrasing without keyword lists
     llm_result = _classify_query_intent_with_llm(query)

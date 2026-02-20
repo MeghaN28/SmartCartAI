@@ -131,11 +131,43 @@ def assess_cost_impact(inventory_id: str, suggested_action: str, item_data: Dict
         cost_breakdown = {
             "transfer_cost": estimated_cost,
         }
-    
-    elif suggested_action in ["hold", "none", "discard"]:
-        # No additional cost (discard may have minimal disposal cost; treat as zero here)
+
+    elif suggested_action == "price_increase":
+        # Pricing intent: validate margin stays acceptable after increase (no extra cost; revenue impact only)
+        selling_price = context.get("selling_price") or item_data.get("selling_price")
+        unit_cost = get_average_unit_cost(inventory_id) or context.get("unit_cost")
         estimated_cost = 0.0
-        cost_breakdown = {"action": "no_cost"}
+        cost_breakdown = {"action": "price_increase", "revenue_impact": "positive"}
+        if selling_price is not None and unit_cost is not None:
+            try:
+                sp, uc = float(selling_price), float(unit_cost)
+                margin_percent = ((sp - uc) / sp) * 100 if sp else 0
+                if margin_percent < MIN_MARGIN_PERCENT:
+                    warnings.append(f"Current margin ({margin_percent:.1f}%) below minimum ({MIN_MARGIN_PERCENT}%); price increase still improves margin.")
+            except (TypeError, ValueError):
+                pass
+
+    elif suggested_action == "discount":
+        # Waste/pricing: ensure discounted price does not go below cost
+        selling_price = context.get("selling_price") or item_data.get("selling_price")
+        unit_cost = get_average_unit_cost(inventory_id) or context.get("unit_cost")
+        discount_pct = context.get("suggested_discount_percent") or 0
+        estimated_cost = 0.0
+        cost_breakdown = {"action": "discount", "discount_pct": discount_pct}
+        if selling_price is not None and unit_cost is not None and discount_pct:
+            try:
+                sp, uc = float(selling_price), float(unit_cost)
+                discounted_price = sp * (1 - discount_pct / 100.0)
+                if discounted_price < uc:
+                    within_budget = False
+                    warnings.append(f"Discounted price (${discounted_price:.2f}) below cost (${uc:.2f}); consider lower discount or donate.")
+            except (TypeError, ValueError):
+                pass
+
+    elif suggested_action in ["hold", "none", "discard", "donate", "bundle"]:
+        # No additional cost (donate/bundle are clearance; treat as zero cost here)
+        estimated_cost = 0.0
+        cost_breakdown = {"action": "no_cost" if suggested_action in ["hold", "none"] else suggested_action}
     
     # Calculate operational impact
     operational_impact = "low"
