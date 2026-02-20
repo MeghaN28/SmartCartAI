@@ -54,12 +54,7 @@ export default function ChatbotScreen() {
       }
 
       const data = await res.json();
-      let botMessageText = data.answer || data.error || 'No response from agent.';
-      
-      // Add suggestion count info if suggestions were generated
-      if (data.suggestions_count > 0) {
-        botMessageText += `\n\n💡 ${data.suggestions_count} suggestion(s) have been saved. Check the Suggestions tab to view them.`;
-      }
+      const botMessageText = data.answer || data.error || 'No response from agent.';
 
       setMessages((prev) => [...prev, { id: generateId(), text: botMessageText, sender: 'bot', timestamp: new Date() }]);
     } catch (err) {

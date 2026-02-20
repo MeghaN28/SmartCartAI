@@ -1122,13 +1122,8 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                     except Exception as e:
                         logger.error(f"Error processing batch item {inv_id}: {e}")
                         errors.append(f"{item.get('item_name', 'Item')}: {str(e)[:80]}")
-                # When user asked for one action (discount/donate/bundle) and none matched, say so and explain why
-                if waste_action_filter and waste_shown == 0:
-                    filter_label = {"discount": "discount", "donate": "donation", "bundle": "bundling"}.get(waste_action_filter, waste_action_filter)
-                    answer_parts.append(f"No items are currently recommended for {filter_label}.")
-                    answer_parts.append("Donation applies to items with high stock, low demand, and near expiry. Discount applies to high stock and low demand. Your near-expiry items may fit bundling instead (medium stock + good demand). Ask \"What's going to waste?\" to see all suggestions.")
-                elif (waste_action_filter or intent == "pricing") and waste_shown > 0:
-                    # Replace generic "Here are my recommendations" with action-specific intro
+                # Replace generic "Here are my recommendations" with action-specific intro when user asked for one action
+                if waste_action_filter or intent == "pricing":
                     try:
                         idx = next(i for i, p in enumerate(answer_parts) if p == "Here are my recommendations:\n")
                         action_intro = (
@@ -1139,30 +1134,29 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                             answer_parts[idx] = action_intro
                     except StopIteration:
                         pass
-                # Show items that got "hold" (or other non-waste) so user sees we checked all N items, not just bundle/discount/donate
+                # When user asked for one action and none matched, say so and explain why
+                if waste_action_filter and waste_shown == 0:
+                    filter_label = {"discount": "discount", "donate": "donation", "bundle": "bundling"}.get(waste_action_filter, waste_action_filter)
+                    answer_parts.append(f"No items are currently recommended for {filter_label}.")
+                    answer_parts.append("Donation applies to items with high stock, low demand, and near expiry. Discount applies to high stock and low demand. Your near-expiry items may fit bundling instead (medium stock + good demand). Ask \"What's going to waste?\" to see all suggestions.")
+                # Save "hold" / other items in the background (no display — user only sees the requested action)
                 other_recs = [r for r in recs if (r.get("recommendation") or {}).get("action", "") not in waste_actions]
-                if other_recs:
-                    answer_parts.append("\nOther items checked (no waste action recommended):")
-                    for rec in other_recs:
-                        inv_id = rec.get("inventory_id")
-                        item = items_by_id.get(inv_id)
-                        if not item:
-                            continue
-                        try:
-                            suggestion_id = save_suggestion(query, item, rec)
-                            if suggestion_id:
-                                suggestions_generated.append({
-                                    "item": item["item_name"],
-                                    "action": "hold",
-                                    "priority": (rec.get("recommendation") or {}).get("priority", "Low"),
-                                    "suggestion_id": suggestion_id,
-                                })
-                            answer_parts.append(f"• {item['item_name']}: No discount/bundle/donation — monitor stock.")
-                        except Exception as e:
-                            logger.error(f"Error saving hold item {inv_id}: {e}")
-                    answer_parts.append(f"\nChecked {len(recs)} items: {waste_shown} with bundle/discount/donate, {len(other_recs)} monitor.")
-                elif len(recs) > 0:
-                    answer_parts.append(f"\nChecked {len(recs)} items.")
+                for rec in other_recs:
+                    inv_id = rec.get("inventory_id")
+                    item = items_by_id.get(inv_id)
+                    if not item:
+                        continue
+                    try:
+                        suggestion_id = save_suggestion(query, item, rec)
+                        if suggestion_id:
+                            suggestions_generated.append({
+                                "item": item["item_name"],
+                                "action": "hold",
+                                "priority": (rec.get("recommendation") or {}).get("priority", "Low"),
+                                "suggestion_id": suggestion_id,
+                            })
+                    except Exception as e:
+                        logger.error(f"Error saving hold item {inv_id}: {e}")
             else:
                 answer_parts.append("• No recommendations returned from batch.")
         else:
@@ -1201,12 +1195,7 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                     errors.append(f"{item.get('item_name', 'Item')}: {str(e)[:80]}")
                     answer_parts.append(f"• {item.get('item_name', 'Item')}: Error — {str(e)[:80]}")
 
-        if suggestions_generated:
-            answer_parts.append(f"\n✅ Generated {len(suggestions_generated)} suggestion(s). Check the Suggestion Log to see all details.")
-        elif errors:
-            answer_parts.append("\n⚠️ No suggestions could be saved. Common causes: Decision Orchestrator not running (start it on port 9000), batch endpoint missing (restart the orchestrator to load latest code), or subagents (risk, feasibility, cost, explanation) not running. Check server logs for details.")
-        else:
-            answer_parts.append("\nNo suggestions were generated for these items.")
+        # No footer lines — response is just the intro and recommendation lines
     
     elif should_generate_suggestions and not items:
         # User asked to check/suggest but no items found (e.g. no low stock, empty DB, or item name not found)
