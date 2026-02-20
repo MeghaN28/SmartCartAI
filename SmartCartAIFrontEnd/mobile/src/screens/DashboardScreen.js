@@ -302,8 +302,7 @@ export default function DashboardScreen() {
         throw new Error(data.error || `Request failed: ${res.status}`);
       }
       const answer = data.answer || 'Done. Check the Suggestions tab for details.';
-      const count = data.suggestions_count > 0 ? `\n\n💡 ${data.suggestions_count} suggestion(s) saved. Check the Suggestions tab.` : '';
-      Alert.alert('SmartCart AI', answer + count);
+      Alert.alert('SmartCart AI', answer);
     } catch (err) {
       setAgentError(err.message || String(err));
       Alert.alert('Error', err.message || 'Could not get suggestion. Ensure backend and Chat agent are running.');

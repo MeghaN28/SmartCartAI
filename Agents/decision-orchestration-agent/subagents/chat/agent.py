@@ -660,8 +660,8 @@ def get_proactive_alert_items() -> Dict[str, List[Dict]]:
 def process_proactive_summary(session_id: str = None) -> Dict:
     """
     Proactively analyze inventory and return a summary of what needs attention
-    (waste/near expiry, out of stock, low stock, overstock) with full recommendations:
-    hold, discount %, bundle, discard + reason, using the full decision pipeline.
+    (waste/near expiry: donate/discount/bundle combined, out of stock, low stock, overstock).
+    Does NOT store proactive recommendations in suggestions — display only.
     """
     alerts = get_proactive_alert_items()
     near_expiry = alerts["near_expiry"]
@@ -679,15 +679,39 @@ def process_proactive_summary(session_id: str = None) -> Dict:
         }
 
     lines = ["Here's what needs your attention right now:\n"]
+    waste_actions = ("donate", "discount", "bundle")
 
-    # Process up to 2 items per category through the full decision pipeline (subagents: risk, feasibility, cost, explanation)
+    # Waste / Near expiry: batch call for correct combined donate/discount/bundle; show only those actions (no hold); do not save
+    if near_expiry:
+        waste_items = near_expiry[:8]
+        recs, batch_err = call_decision_orchestrator_batch(
+            waste_items, user_asked_about_waste=True, intent="waste", waste_action_preference=None
+        )
+        if batch_err and not recs:
+            lines.append("**Waste / Near expiry**")
+            lines.append(f"• Could not get recommendations — {batch_err}")
+        elif recs:
+            items_by_id = {it["inventory_id"]: it for it in waste_items}
+            waste_lines = []
+            for rec in recs:
+                rec_action = (rec.get("recommendation") or {}).get("action", "")
+                if rec_action not in waste_actions:
+                    continue
+                item = items_by_id.get(rec.get("inventory_id"))
+                if not item:
+                    continue
+                waste_lines.append(_format_recommendation_line(item.get("item_name", "Item"), rec, include_reason=True))
+            if waste_lines:
+                lines.append("**Waste / Near expiry (donate / discount / bundle)**")
+                lines.extend(waste_lines)
+            lines.append("")
+
+    # Out of stock, low stock, overstock: show recommendations but do not save to suggestions
     categories = [
-        ("Waste / Near expiry", near_expiry[:2], True, "waste"),   # user_asked_about_waste=True
-        ("Out of stock", out_of_stock[:2], False, "reorder"),
-        ("Low stock", low_stock[:2], False, "reorder"),
+        ("Out of stock", out_of_stock[:3], False, "reorder"),
+        ("Low stock", low_stock[:3], False, "reorder"),
         ("Overstock", overstock[:2], False, "general"),
     ]
-    suggestions_saved = 0
     for label, items, waste_intent, category_intent in categories:
         if not items:
             continue
@@ -698,18 +722,12 @@ def process_proactive_summary(session_id: str = None) -> Dict:
                 lines.append(f"• {item.get('item_name', 'Item')}: Could not get recommendation — {err}")
                 continue
             if rec:
-                sid = save_suggestion("Proactive alert", item, rec)
-                if sid:
-                    suggestions_saved += 1
                 lines.append(_format_recommendation_line(item.get("item_name", "Item"), rec, include_reason=True))
         lines.append("")
 
-    if suggestions_saved > 0:
-        lines.append(f"✅ {suggestions_saved} suggestion(s) saved. Check the Suggestions tab for details.")
-
     return {
         "answer": "\n".join(lines).replace("**", "").strip(),  # plain text for chat
-        "suggestions_count": suggestions_saved,
+        "suggestions_count": 0,  # proactive is display-only; no storage in suggestions
     }
 
 
@@ -1139,24 +1157,7 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                     filter_label = {"discount": "discount", "donate": "donation", "bundle": "bundling"}.get(waste_action_filter, waste_action_filter)
                     answer_parts.append(f"No items are currently recommended for {filter_label}.")
                     answer_parts.append("Donation applies to items with high stock, low demand, and near expiry. Discount applies to high stock and low demand. Your near-expiry items may fit bundling instead (medium stock + good demand). Ask \"What's going to waste?\" to see all suggestions.")
-                # Save "hold" / other items in the background (no display — user only sees the requested action)
-                other_recs = [r for r in recs if (r.get("recommendation") or {}).get("action", "") not in waste_actions]
-                for rec in other_recs:
-                    inv_id = rec.get("inventory_id")
-                    item = items_by_id.get(inv_id)
-                    if not item:
-                        continue
-                    try:
-                        suggestion_id = save_suggestion(query, item, rec)
-                        if suggestion_id:
-                            suggestions_generated.append({
-                                "item": item["item_name"],
-                                "action": "hold",
-                                "priority": (rec.get("recommendation") or {}).get("priority", "Low"),
-                                "suggestion_id": suggestion_id,
-                            })
-                    except Exception as e:
-                        logger.error(f"Error saving hold item {inv_id}: {e}")
+                # Do not save or mention items with no matching action (donate/discount/bundle) when user asked for one
             else:
                 answer_parts.append("• No recommendations returned from batch.")
         else:
