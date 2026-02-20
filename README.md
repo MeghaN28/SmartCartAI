@@ -1,199 +1,178 @@
 # SmartCartAI
 
-SmartCartAI is an intelligent inventory management system designed to optimize retail operations through AI-powered decision-making. The system integrates a React Native mobile app frontend, a Java backend for data processing, and Python-based data generation tools to simulate and manage inventory, sales, and consumption data.
+SmartCartAI is an intelligent inventory management system that optimizes retail operations through AI-powered decision-making. It combines a **React Native (Expo)** mobile app, a **Spring Boot** Java backend, **Python AI agents** (LangChain/LangGraph, Mistral), and **PostgreSQL** for inventory, sales, consumption, and demand data.
 
 ## Features
 
-- **AI-Powered Inventory Management**: Automated decision-making for stock levels, expiry tracking, and waste reduction
-- **Real-time Dashboard**: Monitor inventory status, at-risk items, and agent actions
-- **Mobile App Interface**: Cross-platform React Native app for easy access
-- **Data Simulation**: Generate realistic inventory, sales, and consumption datasets
-- **Modular Architecture**: Separate frontend, backend, and data components for scalability
+- **AI-Powered Inventory Management**: Multi-agent system for stock levels, expiry tracking, waste reduction, and prescriptive recommendations (discount, bundle, donate, reorder)
+- **Conversational Chat**: Natural-language queries and AI suggestions via a dedicated Chat Agent (waste rules, stock lookups, recommendations)
+- **Real-time Dashboard**: Monitor inventory status, at-risk items, agent actions, and impact metrics
+- **Mobile App**: Cross-platform React Native (Expo) app with dashboard, chatbot, inventory views, suggestion log, and upload/forecast screens
+- **Decision Orchestration**: Risk assessment, feasibility, cost-impact, explanation, and food-bank subagents coordinated by a central orchestrator with RAG over PostgreSQL
+- **Data & Scripts**: Sample CSV datasets, Python data generation (`Dataset/`), and SQL scripts for demand/pricing tuning (`database/scripts/`)
 
 ## Project Structure
 
 ```
 SmartCartAI/
 ├── README.md
-├── Agents/                    # AI agents for decision-making
-├── Dataset/                   # Data generation and CSV files
-│   ├── createdataset.py       # Python script to generate sample data
+├── start_all.sh              # Start all services (optional background mode)
+├── start_agents.sh           # Start all Python agents
+├── stop_all.sh               # Stop all services
+├── START_SERVICES.md         # Step-by-step service startup guide
+│
+├── Agents/                   # Python AI agents (Flask)
+│   ├── RUN_AGENTS.md         # How to run each agent
+│   ├── decision-orchestration-agent/   # Orchestrator (port 9000)
+│   │   ├── agent.py
+│   │   ├── subagents/
+│   │   │   ├── chat/         # Chat Agent (port 9006)
+│   │   │   ├── risk-assessment/   # 9004
+│   │   │   ├── feasibility/      # 9001
+│   │   │   ├── cost-impact/      # 9002
+│   │   │   ├── explanation/      # 9003
+│   │   │   └── food-bank/        # 9007
+│   │   └── README.md
+│   ├── inventory-agent/      # Inventory monitoring & forecasting (port 9005)
+│   └── common/               # Shared utilities (e.g. forecasting)
+│
+├── SmartCartAIBackend/       # Spring Boot REST API (port 8080)
+│   ├── pom.xml
+│   ├── mvnw
+│   └── src/main/java/        # Controllers, DTOs, services
+│
+├── SmartCartAIFrontEnd/
+│   └── mobile/               # React Native (Expo) app
+│       ├── package.json
+│       ├── App.js
+│       └── src/
+│           ├── screens/      # Dashboard, Chatbot, Home, SuggestionLog, etc.
+│           ├── components/
+│           ├── navigation/
+│           └── config.js      # API base URL
+│
+├── database/
+│   ├── schema.sql            # PostgreSQL schema (inventory, sales, consumption, demand)
+│   └── scripts/              # Demand and pricing SQL scripts (README inside)
+│
+├── Dataset/                  # Data generation and sample CSVs
+│   ├── createdataset.py
 │   ├── inventory_master_50_unique.csv
 │   ├── sales_50.csv
 │   └── consumption_50.csv
-├── SmartCartAIBackend/        # Java backend application + services
-│   ├── README.md
-│   ├── services/              # Inventory, Sales, Demand services
-│   │   ├── inventory-service/
-│   │   ├── sales-service/
-│   │   └── demand-service/
-│   ├── lib/
-│   └── src/
-│       └── App.java
-├── SmartCartAIFrontEnd/       # React Native/Expo frontend
-│   ├── app.json
-│   ├── package.json
-│   └── app/
-│       ├── _layout.tsx
-│       ├── (tabs)/
-│       │   ├── _layout.tsx
-│       │   ├── index.tsx      # Dashboard
-│       │   └── explore.tsx
-│       ├── inventory.tsx      # Inventory overview
-│       ├── decisions.tsx
-│       └── impact.tsx
-
+│
+└── docs/                     # Architecture and design docs
 ```
 
-## Architecture layers
+## Architecture
 
-This project is organized in clearly separated layers that map to the architecture diagram (`Dataset/SmartCartAI_UseCases.drawio`). Below is a short description of each layer and its responsibilities.
+- **UI — `SmartCartAIFrontEnd/mobile/`**  
+  React Native (Expo) app: dashboard, inventory, chatbot, suggestion log, upload/forecast. Talks to the Java backend and Chat Agent for recommendations and explanations.
 
-- **User Interface (UI) — `SmartCartAIFrontEnd/`** 🔧
-  - Cross-platform React Native (Expo) mobile app that displays the dashboard, inventory list, decision recommendations, and impact analysis.
-  - Communicates with the backend services and agents through REST APIs.
-  - Responsibilities: visualization, user actions, showing explanations and agent recommendations.
+- **Agents — `Agents/`**  
+  - **Decision Orchestration Agent** (9000): Coordinates subagents, uses LangGraph and Mistral for prescriptive interventions and RAG over PostgreSQL.  
+  - **Chat Agent** (9006): Handles natural-language chat and waste/discount/bundle/donate suggestions; used by the mobile app and backend.  
+  - **Inventory Agent** (9005): Monitors inventory, forecasting (e.g. ETS), flags items, and can call the orchestrator.  
+  - **Subagents**: Risk (9004), Feasibility (9001), Cost Impact (9002), Explanation (9003), Food Bank (9007). Run separately for full pipeline; orchestrator has fallbacks if they are not running.
 
-- **Agents — `Agents/`** 🤖
-  - Contains AI agents and helper scripts. The main **Decision-Orchestration Agent** coordinates subagents (Feasibility, CostImpact, Explanation, RiskAssessment).
-  - Responsibilities: orchestrate decision-making, aggregate signals, request subagent analyses, and return structured recommendations and explanations for the UI.
+- **Backend — `SmartCartAIBackend/`**  
+  Single Spring Boot application. REST APIs for inventory, sales, consumption, demand; proxies chat to the Chat Agent. Swagger UI at `http://localhost:8080/swagger-ui.html`.
 
-- **Backend Services — `SmartCartAIBackend/services/`** 🛠️
-  - Microservices that provide REST APIs for core domain data:
-    - Inventory Service — inventory CRUD, flagging, recommendations endpoint
-    - Sales Service — sales data access and ingestion
-    - Demand Service — demand predictions and related endpoints
-  - Each service owns its API contract and reads/writes to the shared database.
+- **Database — `database/`**  
+  PostgreSQL schema and migration/scripts. Tables: inventory, sales, consumption, demand (and related). Scripts in `database/scripts/` for demand and pricing (see `database/scripts/README.md`).
 
-- **Database — `database/`** 🗄️
-  - SQL schema and migration artifacts live here (`database/schema.sql`).
-  - Stores inventory, sales, and demand data used by services and agents.
+- **Dataset — `Dataset/`**  
+  Python script and CSV sample data for prototyping and loading into the DB.
 
-- **Dataset & Data Generation — `Dataset/`** 🧾
-  - Scripts and CSV sample data for testing and prototyping (e.g., `createdataset.py`, `sales_50.csv`, `inventory_master_50_unique.csv`).
-  - Used to train models or run experiments in the Agents layer.
+## Prerequisites
 
+- **Node.js** (for frontend)
+- **Java 17+** and Maven (backend uses `./mvnw`)
+- **Python 3.8+** (for agents and data generation)
+- **PostgreSQL** (database `smartcart_ai`; apply `database/schema.sql`)
+- **Expo CLI** / Expo Go (for React Native development)
+- **Mistral API key** (for LLM features; optional for some fallbacks)
 
-- **Docs & CI — `docs/`, `.github/workflows/`** 📚
-  - Architecture documentation and CI placeholders. Keep these up to date as services and tests are added.
+## Installation & Running
 
+### 1. Database
 
-## Installation
+Create the database and apply the schema:
 
-### Prerequisites
+```bash
+createdb smartcart_ai
+psql -h localhost -U <user> -d smartcart_ai -f database/schema.sql
+```
 
-- Node.js (for frontend)
-- Java JDK (for backend)
-- Python 3 (for data generation)
-- Expo CLI (for React Native development)
+Optionally load sample data from `Dataset/` (see `Dataset/Copydata.txt` or use `createdataset.py` and your import process).
 
-### Frontend Setup
+### 2. Frontend
 
-1. Navigate to the frontend directory:
-   ```bash
-   cd SmartCartAIFrontEnd
-   ```
+```bash
+cd SmartCartAIFrontEnd/mobile
+npm install
+npm start
+```
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+Use Expo Go to open the app (scan QR or press `i`/`a` for simulator).
 
-3. Start the development server:
-   ```bash
-   npx expo start
-   ```
+### 3. Backend (Spring Boot)
 
-### Backend Setup
+```bash
+cd SmartCartAIBackend
+./mvnw spring-boot:run
+```
 
-1. Navigate to the backend directory:
-   ```bash
-   cd SmartCartAIBackend
-   ```
+API: `http://localhost:8080`. Configure DB (and optional agent URLs) in `src/main/resources/application.properties`.
 
-2. Compile and run the Java application:
-   ```bash
-   javac -d bin src/App.java
-   java -cp bin App
-   ```
+### 4. Python Agents
 
-3. Service placeholders for Inventory, Sales and Demand live under `SmartCartAIBackend/services/`. Once implemented, you can build the service images and run the local stack using `infra/docker-compose.yml` (see `infra/` for a placeholder `docker-compose.yml`).
+**Quick start (all agents):**
 
-How to run placeholders locally:
+```bash
+./start_agents.sh
+```
 
-- Build and run the placeholder stack:
-  ```bash
-  docker-compose -f infra/docker-compose.yml up --build -d
-  ```
+**Or run manually** (see `Agents/RUN_AGENTS.md` for details):
 
-- Verify services (example):
-  - Inventory: http://localhost:8081/inventory
-  ```bash
-  curl http://localhost:8081/inventory || echo "inventory service not responding"
-  ```
+- **Required for chat/suggestions:** Decision Orchestrator (9000), Chat Agent (9006)
+- **Optional:** Inventory Agent (9005); subagents Risk (9004), Feasibility (9001), Cost Impact (9002), Explanation (9003), Food Bank (9007)
 
-- Stop the stack:
-  ```bash
-  docker-compose -f infra/docker-compose.yml down
-  ```
+Example (orchestrator + chat only):
 
-Notes:
-- Update `infra/docker-compose.yml` to point to local `build:` contexts or pushed image names once you implement the services. 🔧
-- Add CI steps to build and publish images to a registry when services are production-ready. 🚀
+```bash
+cd Agents/decision-orchestration-agent && PORT=9000 python3 agent.py
+cd Agents/decision-orchestration-agent/subagents/chat && PORT=9006 python3 agent.py
+```
 
-### Data Generation
+Set `MISTRAL_API_KEY` (and optionally DB credentials) via `.env` in `Agents/decision-orchestration-agent/` or the project root.
 
-1. Navigate to the dataset directory:
-   ```bash
-   cd Dataset
-   ```
+### Full stack (three terminals)
 
-2. Run the Python script to generate sample data:
-   ```bash
-   python createdataset.py
-   ```
+See **START_SERVICES.md** for the recommended order: (1) Python agents via `./start_agents.sh`, (2) Java backend via `./mvnw spring-boot:run`, (3) Frontend via `cd SmartCartAIFrontEnd/mobile && npm start`. Use `./start_all.sh --background` to start all in background; `./stop_all.sh` to stop.
 
 ## Usage
 
-### Mobile App
+- **Mobile**: Dashboard metrics, inventory list, AI chatbot, suggestion log, item forecast, upload purchase.
+- **Backend**: REST APIs for inventory/sales/consumption/demand; chat endpoint forwards to Chat Agent.
+- **Agents**: Orchestrator `/orchestrate` for prescriptive recommendations; Chat Agent `/chat` for natural-language queries and suggestions.
 
-- **Dashboard**: View key metrics including total inventory items, at-risk items, agent actions, and waste reduction estimates
-- **Inventory**: Browse inventory items with stock levels, expiry information, and risk assessments
-- **Decisions**: Review AI-generated recommendations for inventory management
-- **Impact**: Analyze the impact of AI decisions on operations
+## Data & Scripts
 
-### Data Analysis
+- **Dataset**: `inventory_master_50_unique.csv`, `sales_50.csv`, `consumption_50.csv`; generate with `python createdataset.py` in `Dataset/`.
+- **Demand/pricing**: Use scripts in `database/scripts/` (e.g. `set_high_demand.sql`, `set_all_high_demand.sql`) to tune demand used by agents; see `database/scripts/README.md`.
 
-The dataset includes:
-- `inventory_master_50_unique.csv`: Product catalog with categories, stock levels, and vendor information
-- `sales_50.csv`: Daily sales data for 50 products
-- `consumption_50.csv`: Consumption tracking including routine use, spoilage, and samples
+## Technologies
+
+- **Frontend**: React Native, Expo, JavaScript
+- **Backend**: Java 17, Spring Boot, Swagger
+- **Agents**: Python 3, Flask, LangChain, LangGraph, Mistral AI, FastMCP, PostgreSQL (RAG)
+- **Data**: Python, Pandas/NumPy (dataset generation); PostgreSQL
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-
-## Technologies Used
-
-- **Frontend**: React Native, Expo, TypeScript
-- **Backend**: Java
-- **Data Processing**: Python, Pandas, NumPy
-- **AI/ML**: (To be implemented in Agents folder)
-# Subagents (from Agents/decision-orchestration-agent)
-cd Agents/decision-orchestration-agent/subagents/risk-assessment && PORT=9004 python3 agent.py
-cd Agents/decision-orchestration-agent/subagents/feasibility && PORT=9001 python3 agent.py
-cd Agents/decision-orchestration-agent/subagents/cost-impact && PORT=9002 python3 agent.py
-cd Agents/decision-orchestration-agent/subagents/explanation && PORT=9003 python3 agent.py
-cd Agents/decision-orchestration-agent/subagents/food-bank && PORT=9007 python3 agent.py
-
-# Inventory
-cd Agents/inventory-agent && PORT=9005 python3 agent.py
-
-# Orchestrator & Chat
-cd Agents/decision-orchestration-agent && PORT=9000 python3 agent.py
-cd Agents/decision-orchestration-agent/subagents/chat && PORT=9006 python3 agent.py
+1. Fork the repository  
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)  
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)  
+4. Push to the branch (`git push origin feature/AmazingFeature`)  
+5. Open a Pull Request  
