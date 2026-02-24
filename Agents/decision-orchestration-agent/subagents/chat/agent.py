@@ -2,6 +2,7 @@
 import os
 import sys
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 from datetime import datetime
@@ -75,7 +76,7 @@ def get_near_expiry_items(within_days: int = 14) -> List[Dict]:
         try:
             # Include expired (expiry_date < today) and near-expiry (up to within_days ahead); order so expired first, then soonest
             cur.execute("""
-                SELECT inventory_id, item_name, category, form, usage,
+                SELECT inventory_id, item_name, category, form, usage, item_type,
                        opening_stock as remaining_stock, min_stock, max_capacity,
                        vendor_id, expiry_date, selling_price
                 FROM inventory
@@ -111,7 +112,7 @@ def get_items_by_name(search: str) -> List[Dict]:
         pattern = f"%{search.strip()}%"
         try:
             cur.execute("""
-                SELECT inventory_id, item_name, category, form, usage,
+                SELECT inventory_id, item_name, category, form, usage, item_type,
                        opening_stock as remaining_stock, min_stock, max_capacity,
                        vendor_id, expiry_date, selling_price
                 FROM inventory
@@ -172,7 +173,7 @@ def get_out_of_stock_items(limit: int = 10) -> List[Dict]:
         cur = conn.cursor()
         try:
             cur.execute("""
-                SELECT inventory_id, item_name, category, opening_stock as remaining_stock,
+                SELECT inventory_id, item_name, category, item_type, opening_stock as remaining_stock,
                        min_stock, max_capacity, vendor_id, expiry_date, selling_price
                 FROM inventory
                 WHERE opening_stock <= 0
@@ -205,7 +206,7 @@ def get_overstock_items(limit: int = 10) -> List[Dict]:
         cur = conn.cursor()
         try:
             cur.execute("""
-                SELECT inventory_id, item_name, category, opening_stock as remaining_stock,
+                SELECT inventory_id, item_name, category, item_type, opening_stock as remaining_stock,
                        min_stock, max_capacity, vendor_id, expiry_date, selling_price
                 FROM inventory
                 WHERE max_capacity IS NOT NULL AND max_capacity > 0
@@ -230,6 +231,106 @@ def get_overstock_items(limit: int = 10) -> List[Dict]:
         return items
     except Exception as e:
         logger.error(f"Error getting overstock items: {e}")
+        return []
+
+
+def get_perishable_items(limit: int = 30) -> List[Dict]:
+    """Return perishable items from inventory (DB-authoritative item_type)."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT inventory_id, item_name, category, form, usage, item_type,
+                   opening_stock as remaining_stock, min_stock, max_capacity,
+                   vendor_id, expiry_date, selling_price
+            FROM inventory
+            WHERE LOWER(COALESCE(item_type, '')) LIKE '%perishable%'
+              AND LOWER(COALESCE(item_type, '')) NOT LIKE '%non%perishable%'
+            ORDER BY item_name ASC
+            LIMIT %s
+            """,
+            (limit,),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+        cur.close()
+        conn.close()
+        return rows
+    except Exception as e:
+        logger.error(f"Error getting perishable items: {e}")
+        return []
+
+
+def get_demand_ranked_items(high: bool = True, limit: int = 15) -> List[Dict]:
+    """Return items ranked by latest DB demand prediction (high or low)."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        order = "DESC" if high else "ASC"
+        cur.execute(
+            f"""
+            WITH latest AS (
+              SELECT DISTINCT ON (d.inventory_id) d.inventory_id, d.predicted_demand
+              FROM demand d
+              WHERE d.predicted_demand IS NOT NULL
+              ORDER BY d.inventory_id, d.prediction_date DESC, d.demand_id DESC
+            )
+            SELECT i.inventory_id, i.item_name, i.item_type, i.expiry_date, i.opening_stock as remaining_stock,
+                   i.min_stock, i.selling_price, l.predicted_demand as forecasted_demand
+            FROM latest l
+            JOIN inventory i ON i.inventory_id = l.inventory_id
+            ORDER BY l.predicted_demand {order}, i.item_name ASC
+            LIMIT %s
+            """,
+            (limit,),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+        cur.close()
+        conn.close()
+        return rows
+    except Exception as e:
+        logger.error(f"Error getting demand-ranked items: {e}")
+        return []
+
+
+def get_price_increase_candidates(limit: int = 30) -> List[Dict]:
+    """Candidates for price increase: high demand and not near expiry."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            WITH latest AS (
+              SELECT DISTINCT ON (d.inventory_id) d.inventory_id, d.predicted_demand
+              FROM demand d
+              WHERE d.predicted_demand IS NOT NULL
+              ORDER BY d.inventory_id, d.prediction_date DESC, d.demand_id DESC
+            ),
+            thr AS (
+              SELECT percentile_cont(0.70) WITHIN GROUP (ORDER BY predicted_demand) AS p70
+              FROM latest
+            )
+            SELECT i.inventory_id, i.item_name, i.category, i.form, i.usage, i.item_type,
+                   i.opening_stock as remaining_stock, i.min_stock, i.max_capacity,
+                   i.vendor_id, i.expiry_date, i.selling_price, l.predicted_demand as forecasted_demand
+            FROM inventory i
+            JOIN latest l ON l.inventory_id = i.inventory_id
+            CROSS JOIN thr t
+            WHERE t.p70 IS NOT NULL
+              AND l.predicted_demand >= t.p70
+              AND (i.expiry_date IS NULL OR i.expiry_date > CURRENT_DATE + INTERVAL '14 day')
+              AND COALESCE(i.opening_stock, 0) > COALESCE(i.min_stock, 0)
+            ORDER BY l.predicted_demand DESC, i.item_name ASC
+            LIMIT %s
+            """,
+            (limit,),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+        cur.close()
+        conn.close()
+        return rows
+    except Exception as e:
+        logger.error(f"Error getting price increase candidates: {e}")
         return []
 
 
@@ -385,21 +486,21 @@ def _build_orchestrator_payload(item: Dict, user_asked_about_waste: bool, intent
     else:
         forecasted_demand = calculate_forecasted_demand(consumption_history)
     demand_floor = get_demand_floor(item['inventory_id'])
-    # Low manual demand (< 5) is a cap so discount can trigger; higher floor boosts forecast
-    if demand_floor < 5:
-        forecasted_demand = min(forecasted_demand, max(demand_floor, 0))
-    else:
+    if demand_floor > 0:
         forecasted_demand = max(forecasted_demand, demand_floor)
-    if forecasted_demand <= 0 and demand_floor >= 5:
-        forecasted_demand = 25.0
-    elif forecasted_demand <= 0:
-        forecasted_demand = max(demand_floor, 0.1)  # respect low manual demand, avoid zero
+    if forecasted_demand <= 0:
+        forecasted_demand = None
     remaining_stock = item.get('remaining_stock', 0)
-    min_stock = item.get('min_stock', 10)
-    stock_signal = "critical" if remaining_stock == 0 else ("low" if remaining_stock < min_stock else "normal")
+    min_stock = item.get('min_stock')
+    if remaining_stock <= 0:
+        stock_signal = "critical"
+    elif min_stock is not None and remaining_stock < min_stock:
+        stock_signal = "low"
+    else:
+        stock_signal = "normal"
     # Pricing intent uses waste path (donation + feasibility) for discount/price_increase %; need user_asked_about_waste so synthesize runs rule engine
     if user_asked_about_waste or intent == "pricing":
-        context = {"user_asked_about_waste": True, "intent": intent if intent == "pricing" else "waste"}
+        context = {"user_asked_about_waste": True, "intent": intent if intent == "pricing" else "waste", "fast_mode": True}
         if waste_action_preference:
             context["waste_action_preference"] = waste_action_preference
         event_type, suggested_action = "near_expiry", "none"
@@ -420,6 +521,8 @@ def _build_orchestrator_payload(item: Dict, user_asked_about_waste: bool, intent
             "category": item.get('category'),
             "form": item.get('form'),
             "use": item.get('usage'),
+            "usage": item.get('usage'),
+            "item_type": item.get('item_type'),
             "min_stock": min_stock,
             "max_capacity": item.get('max_capacity', 1000),
             "vendor_id": item.get('vendor_id'),
@@ -439,19 +542,28 @@ def call_decision_orchestrator_batch(items: List[Dict], user_asked_about_waste: 
     batch_items = items[:8]
     payload_intent = intent if intent == "pricing" else ("waste" if user_asked_about_waste else intent)
     recs = []
-    for it in batch_items:
-        payload = _build_orchestrator_payload(it, user_asked_about_waste or intent == "pricing", intent=payload_intent, waste_action_preference=waste_action_preference)
+    workers = min(
+        len(batch_items),
+        max(1, int(os.getenv("CHAT_ORCHESTRATOR_BATCH_WORKERS", "4"))),
+    )
+
+    def _call_one(it: Dict) -> Optional[Dict]:
+        payload = _build_orchestrator_payload(
+            it,
+            user_asked_about_waste or intent == "pricing",
+            intent=payload_intent,
+            waste_action_preference=waste_action_preference,
+        )
         try:
             response = requests.post(f"{DECISION_ORCHESTRATOR_URL}/orchestrate", json=payload, timeout=30)
             if not response.ok:
                 logger.warning("Orchestrate failed for item %s: %s", it.get("item_name"), response.status_code)
-                continue
+                return None
             data = response.json()
             rec = data.get("recommendation", {})
-            action = rec.get("action", "")
             item_name = (payload.get("item_data") or {}).get("item_name", "Item")
-            logger.info("Orchestrate item=%s recommended_action=%s", item_name, action)
-            recs.append({
+            logger.info("Orchestrate item=%s recommended_action=%s", item_name, rec.get("action", ""))
+            return {
                 "inventory_id": payload.get("inventory_id", ""),
                 "item_name": item_name,
                 "recommendation": rec,
@@ -459,11 +571,20 @@ def call_decision_orchestrator_batch(items: List[Dict], user_asked_about_waste: 
                 "feasibility_check": data.get("feasibility_check", {}),
                 "cost_impact": data.get("cost_impact", {}),
                 "explanation": data.get("explanation", {}),
-            })
+            }
         except requests.exceptions.Timeout:
             logger.warning("Orchestrate timeout for item %s", it.get("item_name"))
+            return None
         except Exception as e:
             logger.error("Orchestrate failed for item %s: %s", it.get("item_name"), e)
+            return None
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_call_one, it) for it in batch_items]
+        for f in as_completed(futures):
+            out = f.result()
+            if out:
+                recs.append(out)
     if batch_items and not recs:
         return None, "Could not get recommendations from orchestrator (all items failed or service unavailable)."
     return recs, None
@@ -779,9 +900,17 @@ def _detect_chat_intent(query_lower: str) -> str:
     except Exception:
         pass
     # Fallback: explicit intents (order matters: more specific first)
+    if "perishable" in query_lower and any(w in query_lower for w in ["inventory", "my", "in my"]):
+        return "perishable"
+    if "high demand" in query_lower and any(w in query_lower for w in ["inventory", "my", "in my"]):
+        return "high_demand"
+    if "low demand" in query_lower and any(w in query_lower for w in ["inventory", "my", "in my"]):
+        return "low_demand"
+    if any(w in query_lower for w in ["price increase", "increase price", "items need price increase"]):
+        return "price_increase"
     if any(w in query_lower for w in ["stock for", "stock of", "tell me stock", "what is the stock", "how much", "how many", "current stock", "stock level"]):
         return "stock"
-    if any(w in query_lower for w in ["forecast demand", "demand for", "demand forecast"]):
+    if any(w in query_lower for w in ["forecast demand", "demand for", "demand forecast", "demand forecast for"]):
         return "demand"
     if any(w in query_lower for w in ["discard", "dispose", "expired", "throw away", "which items to discard"]):
         return "discard"
@@ -826,6 +955,32 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
     query_tokens = [t for t in query.split() if t]
     intent = _detect_chat_intent(query_lower)
 
+    # Direct informational intents (DB-only, no recommendation pipeline)
+    if intent == "perishable":
+        rows = get_perishable_items(limit=50)
+        if not rows:
+            return {"answer": "No perishable items found in inventory.", "suggestions_count": 0, "suggestions": []}
+        lines = ["Perishable items in your inventory:"]
+        for r in rows:
+            lines.append(f"• {r.get('item_name', 'Item')} (stock: {r.get('remaining_stock', 0)}, expiry: {r.get('expiry_date') or 'N/A'})")
+        return {"answer": "\n".join(lines), "suggestions_count": 0, "suggestions": []}
+    if intent == "high_demand":
+        rows = get_demand_ranked_items(high=True, limit=15)
+        if not rows:
+            return {"answer": "No demand prediction data found.", "suggestions_count": 0, "suggestions": []}
+        lines = ["High-demand items (from latest DB predictions):"]
+        for r in rows:
+            lines.append(f"• {r.get('item_name', 'Item')}: {r.get('forecasted_demand', 0)} units/day")
+        return {"answer": "\n".join(lines), "suggestions_count": 0, "suggestions": []}
+    if intent == "low_demand":
+        rows = get_demand_ranked_items(high=False, limit=15)
+        if not rows:
+            return {"answer": "No demand prediction data found.", "suggestions_count": 0, "suggestions": []}
+        lines = ["Low-demand items (from latest DB predictions):"]
+        for r in rows:
+            lines.append(f"• {r.get('item_name', 'Item')}: {r.get('forecasted_demand', 0)} units/day")
+        return {"answer": "\n".join(lines), "suggestions_count": 0, "suggestions": []}
+
     def _is_low_or_out_stock(it: Dict) -> bool:
         """Low/out-of-stock items should only appear in reorder suggestions."""
         stock = it.get("remaining_stock")
@@ -866,6 +1021,8 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
         should_generate_suggestions = True
     if intent == "pricing":
         should_generate_suggestions = True
+    if intent == "price_increase":
+        should_generate_suggestions = True
 
     # Normalize typos so Inventory Agent returns the right item (e.g. "tock for Apple" -> "stock for apple")
     normalized_query = query_lower.replace("tock for ", "stock for ") if "tock for " in query_lower else query
@@ -889,8 +1046,11 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
         pricing_items = get_near_expiry_items(within_days=14)
         items = pricing_items if pricing_items else items
         inventory_query_type = "near_expiry"
+    elif intent == "price_increase":
+        items = get_price_increase_candidates(limit=30)
+        inventory_query_type = "demand"
     # Only auto-enable recommendations for intents that imply "give me actions"; never for pure stock or demand lookups
-    if intent != "stock" and intent != "demand" and items and inventory_query_type in ("near_expiry", "low_stock", "out_of_stock", "overstock", "demand"):
+    if intent in ("reorder", "waste", "donate", "discount", "bundle", "discard", "pricing", "price_increase") and items and inventory_query_type in ("near_expiry", "low_stock", "out_of_stock", "overstock", "demand"):
         should_generate_suggestions = True
     # Use Inventory Agent's interpretation: if it said "near_expiry", treat as waste; donate/discount/bundle are waste sub-intents
     is_waste_query = (intent in ("waste", "donate", "discount", "bundle", "discard")) or waste_trigger or (inventory_query_type == "near_expiry")
@@ -985,11 +1145,13 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                         break
 
     # "forecast demand for X" / "demand for X" -> resolve items by name so we return demand for that item only
-    query_looks_like_demand_for_item = "forecast demand for" in query_lower or "demand for" in query_lower
+    query_looks_like_demand_for_item = ("forecast demand for" in query_lower) or ("demand for" in query_lower) or ("demand forecast for" in query_lower)
     if query_looks_like_demand_for_item:
         name_part = None
         if "forecast demand for " in query_lower:
             name_part = query_lower.split("forecast demand for ", 1)[-1].strip()
+        elif "demand forecast for " in query_lower:
+            name_part = query_lower.split("demand forecast for ", 1)[-1].strip()
         elif "demand for " in query_lower:
             name_part = query_lower.split("demand for ", 1)[-1].strip()
         if name_part and len(name_part) < 50:
@@ -1040,14 +1202,11 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
             consumption_history = get_consumption_history(item.get("inventory_id"))
             forecasted_demand = calculate_forecasted_demand(consumption_history)
             demand_floor = get_demand_floor(item.get("inventory_id", ""))
-            if demand_floor < 5:
-                forecasted_demand = min(forecasted_demand, max(demand_floor, 0))
-            else:
+            if demand_floor > 0:
                 forecasted_demand = max(forecasted_demand, demand_floor)
-            if forecasted_demand <= 0 and demand_floor >= 5:
-                forecasted_demand = 25.0
-            elif forecasted_demand <= 0:
-                forecasted_demand = max(demand_floor, 0.1)
+            if forecasted_demand <= 0:
+                answer_parts.append(f"{name}: demand data unavailable")
+                continue
             answer_parts.append(f"{name}: forecasted demand {forecasted_demand:.1f} units/day (next 7 days)")
         if answer_parts:
             return {"answer": "\n".join(answer_parts), "suggestions_count": 0, "suggestions": []}
@@ -1117,7 +1276,7 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
         errors = []
 
         # Waste/expiry: one batch request. Sort by expiry (soonest first) so DISCOUNT candidates (near-term expiry) get into the batch.
-        if is_waste_query and items:
+        if (is_waste_query or intent == "price_increase") and items:
             from datetime import date as _date
             # Low/out-of-stock should only show under reorder, never donate/discount/bundle/discard.
             items = [it for it in items if not _is_low_or_out_stock(it)]
@@ -1143,7 +1302,7 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                 chunk = waste_items_sorted[start : start + batch_size]
                 if not chunk:
                     break
-                batch_intent = "pricing" if intent == "pricing" else "waste"
+                batch_intent = "pricing" if intent in ("pricing", "price_increase") else "waste"
                 chunk_recs, chunk_err = call_decision_orchestrator_batch(chunk, user_asked_about_waste=True, intent=batch_intent, waste_action_preference=waste_action_preference)
                 if chunk_err:
                     batch_err = chunk_err
@@ -1195,10 +1354,12 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                     if waste_action_filter and rec_action != waste_action_filter:
                         continue
                     # Intent filter: pricing -> only show lines with a pricing %
-                    if intent == "pricing":
+                    if intent in ("pricing", "price_increase"):
                         r = rec.get("recommendation") or {}
                         if r.get("suggested_discount_percent") is None and r.get("suggested_price_increase_percent") is None:
                             continue
+                    if intent == "price_increase" and rec_action != "price_increase":
+                        continue
                     recommendation = rec  # full response shape: has "recommendation" key
                     try:
                         suggestion_id = save_suggestion(query, item, recommendation)
@@ -1222,12 +1383,12 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                         logger.error(f"Error processing batch item {inv_id}: {e}")
                         errors.append(f"{item.get('item_name', 'Item')}: {str(e)[:80]}")
                 # Replace generic "Here are my recommendations" with action-specific intro when user asked for one action
-                if waste_action_filter or intent == "pricing":
+                if waste_action_filter or intent in ("pricing", "price_increase"):
                     try:
                         idx = next(i for i, p in enumerate(answer_parts) if p == "Here are my recommendations:\n")
                         action_intro = (
                             {"discount": "These can be discounted:\n", "donate": "These can be donated:\n", "bundle": "These can be bundled:\n", "discard": "These should be discarded:\n"}.get(waste_action_filter or "")
-                            or ("Pricing suggestions:\n" if intent == "pricing" else None)
+                            or ("Price increase suggestions:\n" if intent == "price_increase" else ("Pricing suggestions:\n" if intent == "pricing" else None))
                         )
                         if action_intro:
                             answer_parts[idx] = action_intro
@@ -1240,9 +1401,9 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                     if waste_action_filter == "donate":
                         answer_parts.append("Donation is recommended only for PERISHABLE items expiring in 0–3 days (urgent). If nothing is that close to expiry, you may see discounts/bundles instead.")
                     elif waste_action_filter == "discount":
-                        answer_parts.append("Discount is recommended for items expiring in ~4–10 days (especially high stock) and for 11–14 days when stock is high. Ask \"What's going to waste?\" to see all actions.")
+                        answer_parts.append("Discount is recommended for PERISHABLE and NON-PERISHABLE items expiring in 4–7 days when demand is high.")
                     elif waste_action_filter == "bundle":
-                        answer_parts.append("Bundling is recommended for MEDIUM stock (20–119) items within the near-expiry window (e.g., 4–10 days or 11–14 days) to increase sell-through. Ask \"What's going to waste?\" to see all actions.")
+                        answer_parts.append("Bundling is recommended for PERISHABLE and NON-PERISHABLE items expiring in 7–10 days when demand is low, paired with similar high-demand items.")
                     elif waste_action_filter == "discard":
                         answer_parts.append("Discard is recommended only for EXPIRED items (past expiry). If none are expired, you may see donate/discount/bundle instead.")
                     else:

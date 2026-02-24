@@ -140,7 +140,7 @@ def get_near_expiry_items(within_days: int = 14) -> List[dict]:
         cur = conn.cursor()
         try:
             cur.execute("""
-                SELECT inventory_id, item_name, category, form, usage,
+                SELECT inventory_id, item_name, category, form, usage, item_type,
                        opening_stock AS remaining_stock, min_stock, max_capacity,
                        vendor_id, expiry_date, selling_price
                 FROM inventory
@@ -176,7 +176,7 @@ def get_items_by_name(search: str) -> List[dict]:
         pattern = f"%{search.strip()}%"
         try:
             cur.execute("""
-                SELECT inventory_id, item_name, category, form, usage,
+                SELECT inventory_id, item_name, category, form, usage, item_type,
                        opening_stock AS remaining_stock, min_stock, max_capacity,
                        vendor_id, expiry_date, selling_price
                 FROM inventory
@@ -210,7 +210,7 @@ def get_out_of_stock_items(limit: int = 20) -> List[dict]:
         cur = conn.cursor()
         try:
             cur.execute("""
-                SELECT inventory_id, item_name, category, form, usage,
+                SELECT inventory_id, item_name, category, form, usage, item_type,
                        opening_stock AS remaining_stock, min_stock, max_capacity,
                        vendor_id, expiry_date, selling_price
                 FROM inventory
@@ -244,7 +244,7 @@ def get_overstock_items(limit: int = 20) -> List[dict]:
         cur = conn.cursor()
         try:
             cur.execute("""
-                SELECT inventory_id, item_name, category, form, usage,
+                SELECT inventory_id, item_name, category, form, usage, item_type,
                        opening_stock AS remaining_stock, min_stock, max_capacity,
                        vendor_id, expiry_date, selling_price
                 FROM inventory
@@ -280,7 +280,7 @@ def get_items_needing_attention(query: str) -> List[dict]:
         cur = conn.cursor()
         query_lower = query.lower()
         sel_ext = (
-            "SELECT inventory_id, item_name, category, form, usage, opening_stock AS remaining_stock, "
+            "SELECT inventory_id, item_name, category, form, usage, item_type, opening_stock AS remaining_stock, "
             "min_stock, max_capacity, vendor_id, expiry_date, selling_price FROM inventory"
         )
         sel_base = (
@@ -444,7 +444,7 @@ def query_inventory_for_user(query: str) -> Dict:
                     conn = get_db_connection()
                     cur = conn.cursor()
                     try:
-                        cur.execute("""SELECT inventory_id, item_name, category, form, usage,
+                        cur.execute("""SELECT inventory_id, item_name, category, form, usage, item_type,
                             opening_stock AS remaining_stock, min_stock, max_capacity, vendor_id, expiry_date, selling_price
                             FROM inventory ORDER BY opening_stock ASC LIMIT 30""", ())
                     except Exception:
@@ -463,7 +463,7 @@ def query_inventory_for_user(query: str) -> Dict:
                 conn = get_db_connection()
                 cur = conn.cursor()
                 try:
-                    cur.execute("""SELECT inventory_id, item_name, category, form, usage,
+                    cur.execute("""SELECT inventory_id, item_name, category, form, usage, item_type,
                         opening_stock AS remaining_stock, min_stock, max_capacity, vendor_id, expiry_date, selling_price
                         FROM inventory WHERE opening_stock > 0 ORDER BY opening_stock ASC LIMIT 30""", ())
                 except Exception:
@@ -513,7 +513,7 @@ def query_inventory_for_user(query: str) -> Dict:
             cur = conn.cursor()
             try:
                 cur.execute("""
-                    SELECT inventory_id, item_name, category, form, usage,
+                    SELECT inventory_id, item_name, category, form, usage, item_type,
                            opening_stock AS remaining_stock, min_stock, max_capacity,
                            vendor_id, expiry_date, selling_price
                     FROM inventory
@@ -550,7 +550,7 @@ def query_inventory_for_user(query: str) -> Dict:
                 cur = conn.cursor()
                 try:
                     cur.execute("""
-                        SELECT inventory_id, item_name, category, form, usage,
+                        SELECT inventory_id, item_name, category, form, usage, item_type,
                                opening_stock AS remaining_stock, min_stock, max_capacity,
                                vendor_id, expiry_date, selling_price
                         FROM inventory ORDER BY opening_stock ASC LIMIT 30
@@ -603,7 +603,7 @@ def query_inventory_for_user(query: str) -> Dict:
                 try:
                     # Get items with low stock (at risk of waste if unsold) or items with expiry date not yet set (could set and track)
                     cur.execute("""
-                        SELECT inventory_id, item_name, category, form, usage,
+                        SELECT inventory_id, item_name, category, form, usage, item_type,
                                opening_stock AS remaining_stock, min_stock, max_capacity,
                                vendor_id, expiry_date, selling_price
                         FROM inventory

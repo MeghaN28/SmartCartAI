@@ -25,5 +25,16 @@ fi
 # Also kill any remaining agent processes
 pkill -f "python3 agent.py" 2>/dev/null
 pkill -f "python agent.py" 2>/dev/null
+pkill -f "Python agent.py" 2>/dev/null
+pkill -f "decision-orchestration-agent/.*/agent.py" 2>/dev/null
+pkill -f "inventory-agent/agent.py" 2>/dev/null
+
+# Force free known agent ports in case stale processes remain
+for port in 9000 9002 9003 9004 9005 9006 9007; do
+    PIDS=$(lsof -t -iTCP:$port -sTCP:LISTEN 2>/dev/null)
+    if [ -n "$PIDS" ]; then
+        kill $PIDS 2>/dev/null
+    fi
+done
 
 echo -e "${GREEN}All agents stopped.${NC}"
