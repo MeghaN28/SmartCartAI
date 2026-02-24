@@ -8,6 +8,7 @@ const SORT_OPTIONS = [
   { key: 'quantity', label: 'Qty' },
   { key: 'category', label: 'Category' },
   { key: 'status', label: 'Status' },
+  { key: 'expiry', label: 'Expiry' },
 ];
 
 export default function FilterSection({

@@ -41,10 +41,12 @@ DB_NAME = os.getenv("DB_NAME", "smartcart_ai")
 DB_USER = os.getenv("DB_USER", "meghanarendrasimha")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "Welcome@123")
 
-# Subagent URLs
+# Subagent URLs (feasibility + cost merged into single agent at 9002)
 SUBAGENT_URLS = {
     "risk": os.getenv("RISK_AGENT_URL", "http://localhost:9004/risk"),
-    "feasibility": os.getenv("FEASIBILITY_AGENT_URL", "http://localhost:9001/feasibility"),
+    "feasibility_and_cost": os.getenv(
+        "FEASIBILITY_AND_COST_AGENT_URL", "http://localhost:9002/feasibility-and-cost"
+    ),
     "cost_impact": os.getenv("COST_IMPACT_AGENT_URL", "http://localhost:9002/cost-impact"),
     "explanation": os.getenv("EXPLANATION_AGENT_URL", "http://localhost:9003/explain"),
     "food_bank": os.getenv("FOOD_BANK_AGENT_URL", "http://localhost:9007/nearest"),
@@ -294,6 +296,73 @@ def retrieve_historical_context(inventory_id: str) -> Dict:
         return {"inventory": {}, "consumption": [], "sales": []}
 
 
+def _latest_unit_cost_from_sales(sales: List[dict]) -> Optional[float]:
+    """Get unit_cost from the most recent sale (sales assumed ordered by purchase_date DESC)."""
+    if not sales:
+        return None
+    try:
+        uc = sales[0].get("unit_cost")
+        if uc is not None:
+            return float(uc)
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
+def get_latest_unit_cost_from_sales(inventory_id: str) -> Optional[float]:
+    """Get the most recent unit_cost from sales for this item (for suggesting selling_price when missing)."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT unit_cost FROM sales
+            WHERE inventory_id = %s AND unit_cost IS NOT NULL AND unit_cost > 0
+            ORDER BY purchase_date DESC NULLS LAST
+            LIMIT 1
+            """,
+            (inventory_id,),
+        )
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        return float(row["unit_cost"]) if row and row.get("unit_cost") is not None else None
+    except Exception as e:
+        logger.debug(f"Could not get latest unit_cost for {inventory_id}: {e}")
+        return None
+
+
+def _suggested_selling_price_from_cost(unit_cost: float, margin_percent: Optional[float] = None) -> float:
+    """Suggest a selling price from unit_cost with margin. Used when inventory.selling_price is not set."""
+    margin = margin_percent if margin_percent is not None else DEFAULT_MARGIN_PERCENT
+    return round(unit_cost * (1 + margin / 100.0), 2)
+
+
+def _reorder_price_increase_suggestion(
+    item_data: dict, historical_context: Optional[Dict] = None
+) -> tuple:
+    """Return (suggested_price_increase_percent, suggested_selling_price) for reorder. Uses 1-2% increase when selling_price is available."""
+    selling_price = (item_data or {}).get("selling_price") or (
+        ((historical_context or {}).get("inventory") or {}).get("selling_price")
+    )
+    if selling_price is None and historical_context:
+        unit_cost = _latest_unit_cost_from_sales(historical_context.get("sales") or [])
+        if unit_cost is not None:
+            try:
+                selling_price = _suggested_selling_price_from_cost(unit_cost)
+            except (TypeError, ValueError):
+                pass
+    try:
+        sp = float(selling_price) if selling_price is not None else None
+    except (TypeError, ValueError):
+        sp = None
+    if sp is None or sp <= 0:
+        return (None, None)
+    pct = REORDER_PRICE_INCREASE_PERCENT
+    increased = round(sp * (1 + pct / 100.0), 2)
+    return (pct, increased)
+
+
 def retrieve_bundle_candidates(inventory_id: str, item_data: Dict, limit: int = 10) -> List[Dict]:
     """Retrieve other inventory items that can be bundled with this item (same category, form, or use)."""
     try:
@@ -346,22 +415,27 @@ BUNDLE_EXPIRY_THRESHOLD = 14
 DONATION_THRESHOLD = 7
 MAX_DISCOUNT_LIMIT = 50
 BASE_DISCOUNT = 10
+# When selling_price is missing, suggest from previous unit_cost (sales) + margin
+DEFAULT_MARGIN_PERCENT = float(os.getenv("DEFAULT_MARGIN_PERCENT", "20.0"))
+# Along with reorder: suggest a small price increase (1-2%) to capture margin
+REORDER_PRICE_INCREASE_PERCENT = float(os.getenv("REORDER_PRICE_INCREASE_PERCENT", "2.0"))
 # Donation rules
 SURPLUS_FOR_DONATION = 20  # units
 LOW_DEMAND_THRESHOLD = 1.0  # units/day
 
-# Waste rules (user spec):
-# - Lot high + demand good → no action (hold)
-# - Lot high + demand low → discount
-# - Lot high + demand low + near expiry → donate
-# - Medium lot + near expiry + demand high → bundle with similar
-# - Lot high + demand high + expiry not near → increase price by %
+# Waste rules (user spec). Ranges are mutually exclusive.
+# Expiry tiers: expired → discard; ≤3d perishable → donate; 4–10d → discount; 11–14d → discount or bundle by stock.
+# Bundle only when 20 <= stock <= 119 (never when stock >= 120).
 LOT_HIGH_MIN_STOCK = 120   # stock >= this → "lot high"
-LOT_MEDIUM_MIN_STOCK = 5
-LOT_MEDIUM_MAX_STOCK = 350   # stock <= this for "medium lot" (bundle range)
-LOT_BUNDLE_STOCK_MIN, LOT_BUNDLE_STOCK_MAX = 20, 320
+LOT_MEDIUM_MIN_STOCK = 20  # lot medium: 20 <= stock < 120
+LOT_MEDIUM_MAX_STOCK = 119 # (mutually exclusive with lot high)
+LOT_LOW_MAX_STOCK = 19     # stock < 20 → "lot low"
+LOT_BUNDLE_STOCK_MIN, LOT_BUNDLE_STOCK_MAX = 20, 119  # bundle only in this range; high stock → discount
 DEMAND_HIGH_THRESHOLD = 5.0   # daily_demand >= this → demand good/high
-NEAR_EXPIRY_DAYS = 14        # days_until_expiry <= this → near expiry
+DONATE_URGENT_DAYS = 3        # donate only when days <= 3 and perishable (narrow window)
+DISCOUNT_MID_DAYS_LOW = 4     # 4–10 days → discount priority
+DISCOUNT_MID_DAYS_HIGH = 10    # 4–10 days → discount
+NEAR_EXPIRY_DAYS = 14         # near expiry = 1–14 days; expired = days < 0 → discard
 DEFAULT_DAILY_DEMAND_WHEN_MISSING = 25.0
 DEFAULT_EXPIRY_DAYS_WHEN_MISSING = 14
 SURPLUS_COMFORTABLE = -80
@@ -370,6 +444,23 @@ LOT_VERY_HIGH_SURPLUS_ONLY = 80
 LOT_VERY_HIGH_STOCK_AND_SURPLUS = (150, 30)
 MEDIUM_DEMAND_THRESHOLD = 2.0
 LOT_VERY_HIGH_ABSOLUTE_STOCK = 380
+
+
+def _days_until_expiry_from_item(item_data: dict, historical_inventory: Optional[dict] = None) -> Optional[int]:
+    """Get days until expiry from item_data (or historical_inventory). Supports expiry_date and expiryDate keys."""
+    from datetime import date
+    expiry_date = None
+    if item_data:
+        expiry_date = item_data.get("expiry_date") or item_data.get("expiryDate")
+    if not expiry_date and historical_inventory:
+        expiry_date = historical_inventory.get("expiry_date") or historical_inventory.get("expiryDate")
+    if not expiry_date:
+        return None
+    try:
+        e = expiry_date if isinstance(expiry_date, date) else date.fromisoformat(str(expiry_date)[:10])
+        return (e - date.today()).days
+    except Exception:
+        return None
 
 
 def _urgency_factor(expiry_days_remaining: Optional[int]) -> float:
@@ -442,11 +533,16 @@ def pick_one_waste_suggestion(
     selling_price: Optional[float],
     preferred_waste_action: Optional[str] = None,
     allow_donate_without_banks: bool = False,
+    is_perishable: Optional[bool] = None,
 ) -> tuple:
     """
-    Select ONE intervention from subagent outputs using rule matrix (user spec).
-    If preferred_waste_action is set ("discount"|"donate"|"bundle"), only return that action when the item fits; else return hold.
+    Select exactly ONE intervention per item (mutually exclusive, hierarchical).
+    Returns (action, reasoning, expected_outcome, overrides).
+    Expiry tiers: expired → discard; ≤3d + perishable → donate; 4–10d → discount; 11–14d → discount (high stock) or bundle (medium).
+    Non-perishables (e.g. Sugar, Flour) never donate; expired → discard. Bundle only when 20 <= stock <= 119.
     """
+    if is_perishable is None:
+        is_perishable = True  # default so existing callers unchanged
     fc = feasibility_check or {}
     ci = cost_impact or {}
     if fc.get("error"):
@@ -459,7 +555,18 @@ def pick_one_waste_suggestion(
         within_budget = ci.get("within_budget", True)
 
     daily_demand = float(forecasted_demand) if forecasted_demand is not None and forecasted_demand > 0 else DEFAULT_DAILY_DEMAND_WHEN_MISSING
-    near_expiry = days_until_expiry is not None and days_until_expiry <= NEAR_EXPIRY_DAYS
+    # Expiry tiers: expired (<0), urgent donate (0–3), discount mid (4–10), late near (11–14), not near (>14 or None)
+    expired = days_until_expiry is not None and days_until_expiry < 0
+    urgent_donate_days = days_until_expiry is not None and 0 <= days_until_expiry <= DONATE_URGENT_DAYS
+    discount_mid_range = (
+        days_until_expiry is not None
+        and DISCOUNT_MID_DAYS_LOW <= days_until_expiry <= DISCOUNT_MID_DAYS_HIGH
+    )
+    late_near_expiry = (
+        days_until_expiry is not None
+        and DISCOUNT_MID_DAYS_HIGH < days_until_expiry <= NEAR_EXPIRY_DAYS
+    )
+    near_expiry = days_until_expiry is not None and 0 <= days_until_expiry <= NEAR_EXPIRY_DAYS
     expiry_not_near = days_until_expiry is None or days_until_expiry > NEAR_EXPIRY_DAYS
 
     lot_high = remaining_stock >= LOT_HIGH_MIN_STOCK
@@ -492,127 +599,164 @@ def pick_one_waste_suggestion(
             o["suggested_selling_price"] = increased_price
         return o
 
-    def _maybe_hold(action_key: str, reasoning: str, outcome: str, overrides: dict) -> tuple:
-        """If user asked for a specific waste action, only return that action; else return hold."""
-        if preferred_waste_action and action_key != preferred_waste_action:
-            return ("hold", f"No {preferred_waste_action} recommendation for {item_name} based on current stock and demand.", "Monitor levels.", _overrides())
-        return (action_key, reasoning, outcome, overrides)
+    def _discount_return(pct_val, price_val, reason_suffix):
+        pct = pct_val if pct_val and pct_val > 0 else 15
+        price = price_val or (round(sp * (1 - pct / 100.0), 2) if sp and pct > 0 else None)
+        reasoning = f"{reason_suffix} A {pct}% discount for {item_name} can help clear stock."
+        if price is not None:
+            reasoning += f" Suggested price: ${price}."
+        return ("discount", reasoning, "Clear stock before expiry.", _overrides(discount_pct=pct, price=price))
 
-    # 1. Lot high + demand good -> no action
-    if lot_high and demand_high:
+    def _bundle_return(reason_suffix: str):
+        """Bundle only for medium stock (20–119)."""
+        if lot_medium and has_similar:
+            first = compatible_items[0]
+            bundle_name = (first.get("item_name") or "similar item").strip()
+            reasoning = f"{reason_suffix} Bundle {item_name} with {bundle_name} to increase sell-through."
+            return (
+                "bundle",
+                reasoning,
+                "Better sell-through via bundled offer.",
+                _overrides(bundle=f"Bundle with: {bundle_name}"),
+            )
+        reasoning = f"{reason_suffix} Consider bundling {item_name} with complementary items to increase sell-through."
+        return ("bundle", reasoning, "Better sell-through via bundled offer.", _overrides(bundle=None))
+
+    # --- 1. Expired → Discard (do not donate non-perishables or expired bulk like Sugar/Flour to food bank) ---
+    if expired:
         reasoning = (
-            f"Lot is high ({remaining_stock} units) and demand is good ({daily_demand:.1f} units/day). "
+            f"{item_name} is past expiry ({days_until_expiry} days). Discard to avoid health risk; do not sell or donate."
+        )
+        return ("discard", reasoning, "Remove expired stock safely.", _overrides())
+
+    # --- 2. Healthy stock: lot high + demand high → hold or price_increase (no waste) ---
+    # Only apply when expiry is NOT near; near-expiry tiers should take priority so discount can trigger.
+    if lot_high and demand_high and expiry_not_near:
+        if expiry_not_near and within_budget and is_feasible and sp and sp > 0:
+            price_increase_pct = 10
+            increased_price = round(sp * (1 + price_increase_pct / 100.0), 2)
+            reasoning = (
+                f"Lot is high ({remaining_stock}), demand strong ({daily_demand:.1f}/day), expiry not soon. "
+                f"Increase price by {price_increase_pct}% for {item_name}. Suggested: ${increased_price}."
+            )
+            return ("price_increase", reasoning, "Capture value with a modest price increase.",
+                    _overrides(price_increase_pct=price_increase_pct, increased_price=increased_price))
+        reasoning = (
+            f"Lot is high ({remaining_stock}), demand good ({daily_demand:.1f}/day). "
             f"No action needed for {item_name}; monitor as usual."
         )
-        return _maybe_hold("hold", reasoning, "Stock and demand are healthy; no intervention.", _overrides())
+        return ("hold", reasoning, "Stock and demand are healthy; no intervention.", _overrides())
 
-    # 2. Lot high + demand high + expiry not near -> increase price by %
-    if lot_high and demand_high and expiry_not_near and within_budget and is_feasible and sp and sp > 0:
-        price_increase_pct = 10  # e.g. 10% increase when demand can bear it
-        increased_price = round(sp * (1 + price_increase_pct / 100.0), 2)
-        reasoning = (
-            f"Lot is high ({remaining_stock}), demand is strong ({daily_demand:.1f}/day), and expiry is not soon. "
-            f"Increase price by {price_increase_pct}% for {item_name}. Suggested price: ${increased_price}."
-        )
-        return _maybe_hold(
-            "price_increase",
-            reasoning,
-            "Capture value with a modest price increase.",
-            _overrides(price_increase_pct=price_increase_pct, increased_price=increased_price),
-        )
-
-    # 3. Lot high + demand low + near expiry -> donate (use food bank subagent when available)
-    if lot_high and demand_low and near_expiry and within_budget and (nearest_food_banks or allow_donate_without_banks):
-        if nearest_food_banks:
-            fb = nearest_food_banks[0]
-            name = (fb.get("name") or "nearest food bank").strip()
-            addr = (fb.get("address") or "").strip()
-            reasoning = (
-                f"Lot is high ({remaining_stock}), demand is low ({daily_demand:.1f}/day), and near expiry ({days_until_expiry} days). "
-                f"Donating {item_name} to {name} minimizes waste."
+    # --- 3. Urgent (0–3 days): donate only if perishable; non-perishable → discount ---
+    if urgent_donate_days and within_budget and (nearest_food_banks or allow_donate_without_banks):
+        if is_perishable:
+            if nearest_food_banks:
+                fb = nearest_food_banks[0]
+                name = (fb.get("name") or "nearest food bank").strip()
+                addr = (fb.get("address") or "").strip()
+                reasoning = f"Urgent expiry ({days_until_expiry} days). Donating {item_name} to {name} minimizes waste."
+                if addr:
+                    reasoning += f" Donate to: {name}, {addr}."
+                return ("donate", reasoning, "Zero waste and social value.", _overrides(food_banks=[fb]))
+            return (
+                "donate",
+                f"Urgent expiry ({days_until_expiry} days). Donating {item_name} to a nearby food bank minimizes waste.",
+                "Zero waste and social value.",
+                _overrides(food_banks=[]),
             )
-            if addr:
-                reasoning += f" Donate to: {name}, {addr}."
-            return _maybe_hold("donate", reasoning, "Zero waste and social value.", _overrides(food_banks=[fb]))
-        else:
-            reasoning = (
-                f"Lot is high ({remaining_stock}), demand is low ({daily_demand:.1f}/day), and near expiry ({days_until_expiry} days). "
-                f"Donating {item_name} to a nearby food bank minimizes waste."
-            )
-            return _maybe_hold("donate", reasoning, "Zero waste and social value.", _overrides(food_banks=[]))
+        # Non-perishable in 0–3 day window: discount, not donate
+        return _discount_return(
+            discount_pct, computed_suggested_price,
+            f"Near expiry ({days_until_expiry} days), non-perishable. "
+        )
 
-    # 4. Lot high + demand low -> discount
-    if lot_high and demand_low and within_budget and is_feasible:
+    # --- 4. 4–10 days: high stock → discount; medium stock → bundle ---
+    if discount_mid_range and within_budget and is_feasible:
+        if lot_high:
+            return _discount_return(
+                discount_pct,
+                computed_suggested_price,
+                f"Within discount window ({days_until_expiry} days), high stock. ",
+            )
+        if lot_medium:
+            return _bundle_return(f"Within discount window ({days_until_expiry} days), medium stock ({remaining_stock}).")
+        return _discount_return(
+            discount_pct,
+            computed_suggested_price,
+            f"Within discount window ({days_until_expiry} days). ",
+        )
+
+    # --- 5. 11–14 days: high stock → discount; medium stock → bundle (bundle only 20–119) ---
+    if late_near_expiry and within_budget and is_feasible:
+        if lot_high:
+            return _discount_return(
+                discount_pct, computed_suggested_price,
+                f"Near expiry ({days_until_expiry} days), high stock. "
+            )
+        if lot_medium:
+            return _bundle_return(f"Near expiry ({days_until_expiry} days), medium stock ({remaining_stock}).")
+        return _discount_return(
+            discount_pct, computed_suggested_price,
+            f"Near expiry ({days_until_expiry} days). "
+        )
+
+    # --- 6. Any other near-expiry (e.g. 1–3 missed): discount, never bundle ---
+    if near_expiry and within_budget and is_feasible:
+        return _discount_return(
+            discount_pct, computed_suggested_price,
+            f"Near expiry ({days_until_expiry} days). "
+        )
+
+    # --- 7. Expiry not near: high stock → discount; medium (20–119) → bundle; never bundle when lot_high ---
+    if lot_high and expiry_not_near and within_budget and is_feasible:
         pct = discount_pct if discount_pct and discount_pct > 0 else 15
-        price = computed_suggested_price
-        if price is None and sp and pct > 0:
-            price = round(sp * (1 - pct / 100.0), 2)
+        price = computed_suggested_price or (round(sp * (1 - pct / 100.0), 2) if sp and pct > 0 else None)
         reasoning = (
-            f"Lot is high ({remaining_stock}), demand is low ({daily_demand:.1f}/day). "
+            f"Lot is high ({remaining_stock}), expiry not soon. "
             f"A {pct}% discount for {item_name} helps clear stock."
         )
         if price is not None:
             reasoning += f" Suggested price: ${price}."
-        return _maybe_hold("discount", reasoning, "Clear stock and recover revenue.", _overrides(discount_pct=pct, price=price))
+        return ("discount", reasoning, "Clear stock and recover revenue.", _overrides(discount_pct=pct, price=price))
 
-    # 5. Medium lot + near expiry + demand high -> bundle with similar (use similar_items from retrieval)
-    if lot_medium and near_expiry and demand_high and has_similar and within_budget and is_feasible:
-        first = compatible_items[0]
-        bundle_name = (first.get("item_name") or "similar item").strip()
-        reasoning = (
-            f"Medium lot ({remaining_stock}), near expiry ({days_until_expiry} days), demand good ({daily_demand:.1f}/day). "
-            f"Bundle {item_name} with {bundle_name} to increase sell-through."
-        )
-        return _maybe_hold(
-            "bundle",
-            reasoning,
-            "Better sell-through via bundled offer.",
-            _overrides(bundle=f"Bundle with: {bundle_name}"),
-        )
-
-    # Fallback: near expiry + (food bank or allow_donate_without_banks) -> donate
-    if near_expiry and (nearest_food_banks or allow_donate_without_banks) and within_budget:
-        if nearest_food_banks:
-            fb = nearest_food_banks[0]
-            name = (fb.get("name") or "nearest food bank").strip()
-            reasoning = f"Near expiry. Donating {item_name} to {name} minimizes waste."
-            return _maybe_hold("donate", reasoning, "Zero waste and social value.", _overrides(food_banks=[fb]))
-        reasoning = f"Near expiry. Donating {item_name} to a nearby food bank minimizes waste."
-        return _maybe_hold("donate", reasoning, "Zero waste and social value.", _overrides(food_banks=[]))
-
-    # When user asked for a specific action, use relaxed rules so "which can be discounted/donated/bundled?" returns useful suggestions for near-expiry items
-    if preferred_waste_action and near_expiry and within_budget and is_feasible:
-        has_stock = lot_high or lot_medium
-        if preferred_waste_action == "discount" and has_stock and sp and sp > 0:
-            pct = discount_pct if discount_pct and discount_pct > 0 else 15
-            price = computed_suggested_price or (round(sp * (1 - pct / 100.0), 2) if sp and pct > 0 else None)
-            reasoning = (
-                f"Near expiry ({days_until_expiry} days), stock {remaining_stock}. "
-                f"A {pct}% discount for {item_name} can help clear stock before expiry."
-            )
-            if price is not None:
-                reasoning += f" Suggested price: ${price}."
-            return ("discount", reasoning, "Clear stock before expiry.", _overrides(discount_pct=pct, price=price))
-        if preferred_waste_action == "donate" and (nearest_food_banks or allow_donate_without_banks):
-            if nearest_food_banks:
-                fb = nearest_food_banks[0]
-                name = (fb.get("name") or "nearest food bank").strip()
-                reasoning = f"Near expiry ({days_until_expiry} days). Donating {item_name} to {name} minimizes waste."
-                return ("donate", reasoning, "Zero waste and social value.", _overrides(food_banks=[fb]))
-            reasoning = f"Near expiry ({days_until_expiry} days). Donating {item_name} to a nearby food bank minimizes waste."
-            return ("donate", reasoning, "Zero waste and social value.", _overrides(food_banks=[]))
-        if preferred_waste_action == "bundle" and has_stock and has_similar:
+    if lot_medium and demand_low and expiry_not_near and within_budget and is_feasible:
+        if has_similar:
             first = compatible_items[0]
             bundle_name = (first.get("item_name") or "similar item").strip()
             reasoning = (
-                f"Near expiry ({days_until_expiry} days), stock {remaining_stock}. "
+                f"Medium lot ({remaining_stock}), demand low ({daily_demand:.1f}/day). "
                 f"Bundle {item_name} with {bundle_name} to increase sell-through."
             )
-            return ("bundle", reasoning, "Better sell-through via bundled offer.", _overrides(bundle=f"Bundle with: {bundle_name}"))
+            return ("bundle", reasoning, "Better sell-through via bundled offer.",
+                    _overrides(bundle=f"Bundle with: {bundle_name}"))
+        reasoning = (
+            f"Medium lot ({remaining_stock}), demand low ({daily_demand:.1f}/day). "
+            f"Consider bundling {item_name} with complementary items to increase sell-through."
+        )
+        return ("bundle", reasoning, "Better sell-through via bundled offer.", _overrides(bundle=None))
 
-    # Default: hold
-    reasoning = f"No urgent action for {item_name}. Stock {remaining_stock}, demand {daily_demand:.1f}/day."
-    return _maybe_hold("hold", reasoning, "Monitor levels.", _overrides())
+    # Final fallback: discount if high stock, else bundle only if medium stock
+    if lot_high:
+        pct = discount_pct if discount_pct and discount_pct > 0 else 15
+        price = computed_suggested_price or (round(sp * (1 - pct / 100.0), 2) if sp and pct > 0 else None)
+        reasoning = f"High stock ({remaining_stock}). A {pct}% discount for {item_name} helps clear stock."
+        if price is not None:
+            reasoning += f" Suggested price: ${price}."
+        return ("discount", reasoning, "Clear stock.", _overrides(discount_pct=pct, price=price))
+    if lot_medium and has_similar:
+        first = compatible_items[0]
+        bundle_name = (first.get("item_name") or "similar item").strip()
+        reasoning = (
+            f"Stock {remaining_stock}, demand {daily_demand:.1f}/day. "
+            f"Bundle {item_name} with {bundle_name} for better sell-through."
+        )
+        return ("bundle", reasoning, "Better sell-through via bundled offer.",
+                _overrides(bundle=f"Bundle with: {bundle_name}"))
+    reasoning = (
+        f"Stock {remaining_stock}, demand {daily_demand:.1f}/day. "
+        "Consider bundling with complementary items."
+    )
+    return ("bundle", reasoning, "Better sell-through via bundled offer.", _overrides(bundle=None))
 
 
 # -----------------------------------------------------------------------------
@@ -636,41 +780,25 @@ def assess_risk(state: DecisionOrchestratorState) -> dict:
     try:
         r = requests.post(SUBAGENT_URLS["risk"], json=payload, timeout=5)
         risk_assessment = r.json() if r.ok else {"error": f"HTTP {r.status_code}"}
+        status = "ok" if not risk_assessment.get("error") else "error"
+        logger.info("[Subagent] Risk Assessment completed | item=%s | status=%s", item_name, status)
     except Exception as e:
         logger.error(f"Risk assessment failed: {e}")
         risk_assessment = {"error": str(e), "risk_level": "unknown", "risk_factors": []}
+        logger.info("[Subagent] Risk Assessment completed | item=%s | status=error", item_name)
     
     return {"risk_assessment": risk_assessment}
 
 
-def check_feasibility(state: DecisionOrchestratorState) -> dict:
-    """Call Feasibility subagent."""
+def check_feasibility_and_cost(state: DecisionOrchestratorState) -> dict:
+    """Call merged Feasibility & Cost Impact subagent (single HTTP call)."""
     inv_id = state.get("inventory_id", "?")
     item_name = (state.get("item_data") or {}).get("item_name", "?")
-    logger.info("[Subagent] Calling Feasibility | item=%s | inventory_id=%s", item_name, inv_id)
-    payload = {
-        "inventory_id": state.get("inventory_id"),
-        "suggested_action": state.get("suggested_action"),
-        "item_data": state.get("item_data", {}),
-        "remaining_stock": state.get("remaining_stock"),
-        "context": state.get("context", {}),
-    }
-    
-    try:
-        r = requests.post(SUBAGENT_URLS["feasibility"], json=payload, timeout=5)
-        feasibility_check = r.json() if r.ok else {"error": f"HTTP {r.status_code}"}
-    except Exception as e:
-        logger.error(f"Feasibility check failed: {e}")
-        feasibility_check = {"error": str(e), "is_feasible": False, "constraints": []}
-    
-    return {"feasibility_check": feasibility_check}
-
-
-def assess_cost_impact(state: DecisionOrchestratorState) -> dict:
-    """Call Cost & Operational Impact subagent."""
-    inv_id = state.get("inventory_id", "?")
-    item_name = (state.get("item_data") or {}).get("item_name", "?")
-    logger.info("[Subagent] Calling Cost Impact | item=%s | inventory_id=%s", item_name, inv_id)
+    logger.info(
+        "[Subagent] Calling Feasibility & Cost Impact | item=%s | inventory_id=%s",
+        item_name,
+        inv_id,
+    )
     item_data = state.get("item_data", {})
     context = dict(state.get("context", {}))
     context.setdefault("selling_price", item_data.get("selling_price"))
@@ -679,18 +807,37 @@ def assess_cost_impact(state: DecisionOrchestratorState) -> dict:
         "inventory_id": state.get("inventory_id"),
         "suggested_action": state.get("suggested_action"),
         "item_data": item_data,
+        "remaining_stock": state.get("remaining_stock"),
         "forecasted_demand": state.get("forecasted_demand"),
         "context": context,
     }
-    
     try:
-        r = requests.post(SUBAGENT_URLS["cost_impact"], json=payload, timeout=5)
-        cost_impact = r.json() if r.ok else {"error": f"HTTP {r.status_code}"}
+        r = requests.post(SUBAGENT_URLS["feasibility_and_cost"], json=payload, timeout=8)
+        if not r.ok:
+            feasibility_check = {"error": f"HTTP {r.status_code}", "is_feasible": False, "constraints": []}
+            cost_impact = {"error": f"HTTP {r.status_code}", "estimated_cost": 0, "within_budget": True}
+            logger.info("[Subagent] Feasibility & Cost completed | item=%s | status=error", item_name)
+        else:
+            data = r.json()
+            feasibility_check = data.get("feasibility_check", {})
+            cost_impact = data.get("cost_impact", {})
+            fc_ok = not feasibility_check.get("error")
+            ci_ok = not cost_impact.get("error")
+            status = "ok" if (fc_ok and ci_ok) else "error"
+            logger.info(
+                "[Subagent] Feasibility & Cost completed | item=%s | status=%s",
+                item_name,
+                status,
+            )
     except Exception as e:
-        logger.error(f"Cost impact assessment failed: {e}")
+        logger.error(f"Feasibility & Cost Impact call failed: {e}")
+        feasibility_check = {"error": str(e), "is_feasible": False, "constraints": []}
         cost_impact = {"error": str(e), "estimated_cost": 0, "within_budget": True}
-    
-    return {"cost_impact": cost_impact}
+        logger.info("[Subagent] Feasibility & Cost completed | item=%s | status=error", item_name)
+    return {
+        "feasibility_check": feasibility_check,
+        "cost_impact": cost_impact,
+    }
 
 
 def run_decision_engine(state: DecisionOrchestratorState) -> dict:
@@ -707,24 +854,41 @@ def run_decision_engine(state: DecisionOrchestratorState) -> dict:
     if suggested_action == "reorder":
         return {"recommended_action": "reorder", "_decision_overrides": None}
 
+    # Low stock: reorder only — never donate, discount, or bundle (do not include in donation suggestions)
+    min_stock = item_data.get("min_stock", 10)
+    is_low_stock = (
+        state.get("stock_signal") in ("low", "critical")
+        or (remaining is not None and min_stock is not None and remaining <= min_stock)
+    )
+    if is_low_stock:
+        return {"recommended_action": "reorder", "_decision_overrides": None}
+
     # Non-waste path: hold or reorder
     if not user_asked_about_waste and state.get("event_type") != "near_expiry":
         return {"recommended_action": suggested_action or "hold", "_decision_overrides": None}
 
     # Waste/expiry path: run rule matrix with empty food banks (we fetch food banks only if decision is donate)
     historical_context = retrieve_historical_context(inventory_id)
-    expiry_date = item_data.get("expiry_date") or (historical_context.get("inventory") or {}).get("expiry_date")
-    days_until_expiry = None
-    if expiry_date:
-        try:
-            from datetime import date
-            e = expiry_date if isinstance(expiry_date, date) else date.fromisoformat(str(expiry_date)[:10])
-            days_until_expiry = (e - date.today()).days
-        except Exception:
-            days_until_expiry = None
+    days_until_expiry = _days_until_expiry_from_item(item_data, (historical_context or {}).get("inventory"))
     selling_price = item_data.get("selling_price") or (historical_context.get("inventory") or {}).get("selling_price")
+    # When selling_price is missing, suggest from previous unit_cost (sales) + margin for discount suggestions
+    if selling_price is None:
+        unit_cost = _latest_unit_cost_from_sales(historical_context.get("sales") or [])
+        if unit_cost is not None:
+            try:
+                selling_price = _suggested_selling_price_from_cost(unit_cost)
+            except (TypeError, ValueError):
+                pass
+    if selling_price is not None:
+        try:
+            selling_price = float(selling_price)
+        except (TypeError, ValueError):
+            selling_price = None
     bundle_candidates = retrieve_bundle_candidates(inventory_id, item_data, limit=10)
     similar_items = retrieve_similar_items_by_embedding(inventory_id, limit=5)
+    # Perishability: only treat as perishable when explicitly labeled
+    cat = (item_data.get("category") or "").strip().lower()
+    is_perishable = ("perishable" in cat) and ("non-perishable" not in cat)
 
     action_key, reasoning, expected_outcome, overrides = pick_one_waste_suggestion(
         state.get("risk_assessment", {}),
@@ -740,6 +904,7 @@ def run_decision_engine(state: DecisionOrchestratorState) -> dict:
         selling_price,
         preferred_waste_action=preferred_waste_action,
         allow_donate_without_banks=True,
+        is_perishable=is_perishable,
     )
     return {
         "recommended_action": action_key,
@@ -757,14 +922,22 @@ def get_donation_options(state: DecisionOrchestratorState) -> dict:
         or (risk_level in ("critical", "high") and event_type == "near_expiry")
     )
     if not should_fetch:
+        logger.info("[Subagent] Food Bank skipped | reason=not donate (action=%s)", recommended_action)
         return {"nearest_food_banks": state.get("nearest_food_banks", [])}
+    inv_id = state.get("inventory_id", "?")
+    item_name = (state.get("item_data") or {}).get("item_name", "?")
+    logger.info("[Subagent] Calling Food Bank | item=%s | inventory_id=%s", item_name, inv_id)
     try:
         r = requests.post(SUBAGENT_URLS["food_bank"], json={"limit": 5}, timeout=5)
         if r.ok:
             data = r.json()
-            return {"nearest_food_banks": data.get("nearest_food_banks", [])}
+            banks = data.get("nearest_food_banks", [])
+            logger.info("[Subagent] Food Bank completed | item=%s | status=ok | banks=%s", item_name, len(banks))
+            return {"nearest_food_banks": banks}
+        logger.info("[Subagent] Food Bank completed | item=%s | status=error | http=%s", item_name, r.status_code)
     except Exception as e:
         logger.warning(f"Food bank lookup failed: {e}")
+        logger.info("[Subagent] Food Bank completed | item=%s | status=error", item_name)
     return {"nearest_food_banks": state.get("nearest_food_banks", [])}
 
 
@@ -796,9 +969,12 @@ def generate_explanation(state: DecisionOrchestratorState) -> dict:
     try:
         r = requests.post(SUBAGENT_URLS["explanation"], json=payload, timeout=10)
         explanation = r.json() if r.ok else {"error": f"HTTP {r.status_code}"}
+        status = "ok" if not explanation.get("error") else "error"
+        logger.info("[Subagent] Explanation completed | item=%s | status=%s", item_name, status)
     except Exception as e:
         logger.error(f"Explanation generation failed: {e}")
         explanation = {"error": str(e), "explanation": "Unable to generate explanation."}
+        logger.info("[Subagent] Explanation completed | item=%s | status=error", item_name)
     
     return {"explanation": explanation}
 
@@ -834,16 +1010,22 @@ def synthesize_recommendation(state: DecisionOrchestratorState) -> dict:
             lines.append(f"  - {name} (similarity {sim}, stock {stock}/min {min_s}): {past_str}")
         similar_text = "\n".join(lines) if lines else "None available."
 
-    expiry_date = item_data.get("expiry_date") or (historical_context.get("inventory") or {}).get("expiry_date")
+    days_until_expiry = _days_until_expiry_from_item(item_data, (historical_context or {}).get("inventory"))
+    expiry_date = item_data.get("expiry_date") or item_data.get("expiryDate") or ((historical_context or {}).get("inventory") or {}).get("expiry_date") or ((historical_context or {}).get("inventory") or {}).get("expiryDate")
     selling_price = item_data.get("selling_price") or (historical_context.get("inventory") or {}).get("selling_price")
-    days_until_expiry = None
-    if expiry_date:
+    # When selling_price is missing, suggest from previous unit_cost (sales) + margin
+    if selling_price is None:
+        unit_cost = _latest_unit_cost_from_sales(historical_context.get("sales") or [])
+        if unit_cost is not None:
+            try:
+                selling_price = _suggested_selling_price_from_cost(unit_cost)
+            except (TypeError, ValueError):
+                pass
+    if selling_price is not None:
         try:
-            from datetime import date
-            e = expiry_date if isinstance(expiry_date, date) else date.fromisoformat(str(expiry_date)[:10])
-            days_until_expiry = (e - date.today()).days
-        except Exception:
-            days_until_expiry = None
+            selling_price = float(selling_price)
+        except (TypeError, ValueError):
+            selling_price = None
 
     # Dynamic discount (urgency + surplus) for context; intervention selection uses pick_one_waste_suggestion
     remaining = state.get("remaining_stock", 0)
@@ -939,10 +1121,13 @@ Provide a structured recommendation as JSON with:
                 discard_reason = strip_markdown(discard_reason).strip() or None
             action = llm_result.get("action", state.get("suggested_action", "none"))
             suggested_action = state.get("suggested_action", "none")
-            # Reorder (low stock): one clear suggestion — reorder by expiry date (use state so proactive low-stock gets this)
+            # Reorder (low stock): one clear suggestion — reorder by expiry date; suggest 1-2% price increase
             if suggested_action == "reorder" or action == "reorder":
                 expiry_str = f" by {expiry_date}" if expiry_date else ""
                 reasoning = f"Reorder{expiry_str} to maintain stock; prioritize by expiry date."
+                price_inc_pct, increased_price = _reorder_price_increase_suggestion(item_data, historical_context)
+                if price_inc_pct is not None:
+                    reasoning += f" Consider a {price_inc_pct:.0f}% price increase to capture margin while restocking."
                 expected_outcome = "Stock levels will be maintained and waste minimized."
                 recommendation = {
                     "action": "reorder",
@@ -950,24 +1135,37 @@ Provide a structured recommendation as JSON with:
                     "reasoning": reasoning,
                     "expected_outcome": strip_markdown(expected_outcome),
                     "suggested_discount_percent": None,
-                    "suggested_selling_price": None,
+                    "suggested_selling_price": increased_price,
                     "bundle_suggestion": None,
                     "waste_action": None,
                     "discard_reason": None,
                     "llm_enhanced": True,
                 }
+                if price_inc_pct is not None:
+                    recommendation["suggested_price_increase_percent"] = price_inc_pct
             elif user_asked_about_waste:
                 # Use decision engine result when already computed (pipeline ran decision_engine first)
                 overrides = state.get("_decision_overrides") or {}
                 rec_action = state.get("recommended_action")
+                unit_cost = _latest_unit_cost_from_sales(historical_context.get("sales") or [])
+                def _cap_price_above_cost(price_val):
+                    if price_val is None or unit_cost is None:
+                        return price_val
+                    try:
+                        p, uc = float(price_val), float(unit_cost)
+                        return max(p, uc) if p < uc else p
+                    except (TypeError, ValueError):
+                        return price_val
                 if rec_action and overrides:
+                    suggested_price_val = overrides.get("suggested_selling_price")
+                    suggested_price_val = _cap_price_above_cost(suggested_price_val)
                     recommendation = {
                         "action": rec_action,
                         "priority": llm_result.get("priority", "Medium"),
                         "reasoning": overrides.get("reasoning", ""),
                         "expected_outcome": overrides.get("expected_outcome", ""),
                         "suggested_discount_percent": overrides.get("suggested_discount_percent"),
-                        "suggested_selling_price": overrides.get("suggested_selling_price"),
+                        "suggested_selling_price": suggested_price_val,
                         "bundle_suggestion": overrides.get("bundle_suggestion"),
                         "waste_action": strip_markdown(llm_result.get("waste_action") or "") or None,
                         "discard_reason": discard_reason,
@@ -978,6 +1176,8 @@ Provide a structured recommendation as JSON with:
                         recommendation["_nearest_food_banks_override"] = state["nearest_food_banks"]
                 else:
                     preferred = (state.get("context") or {}).get("waste_action_preference")
+                    _cat = (item_data.get("category") or "").strip().lower()
+                    _is_perishable = ("perishable" in _cat) and ("non-perishable" not in _cat)
                     _pk, reasoning_one, expected_one, overrides = pick_one_waste_suggestion(
                         state.get("risk_assessment", {}),
                         state.get("feasibility_check", {}),
@@ -991,14 +1191,16 @@ Provide a structured recommendation as JSON with:
                         state.get("forecasted_demand"),
                         selling_price,
                         preferred_waste_action=preferred,
+                        is_perishable=_is_perishable,
                     )
+                    suggested_price_val = _cap_price_above_cost(overrides.get("suggested_selling_price"))
                     recommendation = {
                         "action": _pk,
                         "priority": llm_result.get("priority", "Medium"),
                         "reasoning": reasoning_one,
                         "expected_outcome": expected_one,
                         "suggested_discount_percent": overrides.get("suggested_discount_percent"),
-                        "suggested_selling_price": overrides.get("suggested_selling_price"),
+                        "suggested_selling_price": suggested_price_val,
                         "bundle_suggestion": overrides.get("bundle_suggestion"),
                         "waste_action": strip_markdown(llm_result.get("waste_action") or "") or None,
                         "discard_reason": discard_reason,
@@ -1035,17 +1237,23 @@ Provide a structured recommendation as JSON with:
             suggested_action = state.get("suggested_action", "none")
             if suggested_action == "reorder":
                 expiry_str = f" by {expiry_date}" if expiry_date else ""
+                reasoning = f"Reorder{expiry_str} to maintain stock; prioritize by expiry date."
+                price_inc_pct, increased_price = _reorder_price_increase_suggestion(item_data, None)
+                if price_inc_pct is not None:
+                    reasoning += f" Consider a {price_inc_pct:.0f}% price increase to capture margin while restocking."
                 recommendation = {
                     "action": "reorder",
                     "priority": "Medium",
-                    "reasoning": f"Reorder{expiry_str} to maintain stock; prioritize by expiry date.",
+                    "reasoning": reasoning,
                     "expected_outcome": "Stock levels will be maintained and waste minimized.",
                     "suggested_discount_percent": None,
-                    "suggested_selling_price": None,
+                    "suggested_selling_price": increased_price,
                     "bundle_suggestion": None,
                     "discard_reason": None,
                     "llm_enhanced": False,
                 }
+                if price_inc_pct is not None:
+                    recommendation["suggested_price_increase_percent"] = price_inc_pct
             elif user_asked_about_waste:
                 overrides = state.get("_decision_overrides") or {}
                 rec_action = state.get("recommended_action")
@@ -1065,6 +1273,8 @@ Provide a structured recommendation as JSON with:
                         recommendation["_nearest_food_banks_override"] = state["nearest_food_banks"]
                 else:
                     preferred = (state.get("context") or {}).get("waste_action_preference")
+                    _cat = (item_data.get("category") or "").strip().lower()
+                    _is_perishable = ("perishable" in _cat) and ("non-perishable" not in _cat)
                     _pk, reasoning_one, expected_one, overrides = pick_one_waste_suggestion(
                         state.get("risk_assessment", {}),
                         state.get("feasibility_check", {}),
@@ -1078,6 +1288,7 @@ Provide a structured recommendation as JSON with:
                         state.get("forecasted_demand"),
                         selling_price,
                         preferred_waste_action=preferred,
+                        is_perishable=_is_perishable,
                     )
                     recommendation = {
                         "action": _pk,
@@ -1117,17 +1328,23 @@ Provide a structured recommendation as JSON with:
 
         if suggested_action == "reorder":
             expiry_str = f" by {expiry_date}" if expiry_date else ""
+            reasoning = f"Reorder{expiry_str} to maintain stock; prioritize by expiry date."
+            price_inc_pct, increased_price = _reorder_price_increase_suggestion(state.get("item_data", {}), None)
+            if price_inc_pct is not None:
+                reasoning += f" Consider a {price_inc_pct:.0f}% price increase to capture margin while restocking."
             recommendation = {
                 "action": "reorder",
                 "priority": priority,
-                "reasoning": f"Reorder{expiry_str} to maintain stock; prioritize by expiry date.",
+                "reasoning": reasoning,
                 "expected_outcome": "Stock levels will be maintained and waste minimized.",
                 "suggested_discount_percent": None,
-                "suggested_selling_price": None,
+                "suggested_selling_price": increased_price,
                 "bundle_suggestion": None,
                 "discard_reason": None,
                 "llm_enhanced": False,
             }
+            if price_inc_pct is not None:
+                recommendation["suggested_price_increase_percent"] = price_inc_pct
         elif user_asked_about_waste:
             overrides = state.get("_decision_overrides") or {}
             rec_action = state.get("recommended_action")
@@ -1147,6 +1364,8 @@ Provide a structured recommendation as JSON with:
                     recommendation["_nearest_food_banks_override"] = state["nearest_food_banks"]
             else:
                 preferred = (state.get("context") or {}).get("waste_action_preference")
+                _cat = (item_data.get("category") or "").strip().lower()
+                _is_perishable = ("perishable" in _cat) and ("non-perishable" not in _cat)
                 _pk, reasoning_one, expected_one, overrides = pick_one_waste_suggestion(
                     state.get("risk_assessment", {}),
                     state.get("feasibility_check", {}),
@@ -1160,6 +1379,7 @@ Provide a structured recommendation as JSON with:
                     state.get("forecasted_demand"),
                     selling_price,
                     preferred_waste_action=preferred,
+                    is_perishable=_is_perishable,
                 )
                 recommendation = {
                     "action": _pk,
@@ -1186,6 +1406,24 @@ Provide a structured recommendation as JSON with:
                 "discard_reason": None,
                 "llm_enhanced": False,
             }
+
+    # Priority override (risk management): Perishable/urgent items should surface as High priority.
+    try:
+        _cat = (item_data.get("category") or "").strip().lower()
+        _is_perishable = ("perishable" in _cat) and ("non-perishable" not in _cat)
+    except Exception:
+        _is_perishable = False
+    _action = (recommendation or {}).get("action", "") or ""
+    if _action in ("discard", "reorder"):
+        recommendation["priority"] = "High"
+    elif days_until_expiry is not None and 0 <= days_until_expiry <= DONATE_URGENT_DAYS:
+        recommendation["priority"] = "High"
+    elif _is_perishable and _action in ("donate", "discount", "bundle"):
+        recommendation["priority"] = "High"
+    elif _action in ("donate", "discount", "bundle"):
+        recommendation["priority"] = "Medium"
+    elif _action:
+        recommendation["priority"] = "Low"
 
     # Build final recommendation: use override for nearest_food_banks when we picked "donate" only
     nearest_fb = recommendation.pop("_nearest_food_banks_override", None)
@@ -1220,22 +1458,39 @@ def _should_call_food_bank(state: DecisionOrchestratorState) -> str:
     return "synthesize_recommendation"
 
 
+def _subagents_called_from_state(final_state: dict) -> dict:
+    """Build a summary of which subagents were called and their status (for verification in logs + response)."""
+    risk = final_state.get("risk_assessment") or {}
+    feasibility = final_state.get("feasibility_check") or {}
+    cost = final_state.get("cost_impact") or {}
+    explanation = final_state.get("explanation") or {}
+    rec = final_state.get("recommendation") or {}
+    recommended_action = rec.get("action") or final_state.get("recommended_action") or ""
+    nearest_food_banks = final_state.get("nearest_food_banks") or []
+
+    return {
+        "risk": "error" if risk.get("error") else "ok",
+        "feasibility": "error" if feasibility.get("error") else "ok",
+        "cost_impact": "error" if cost.get("error") else "ok",
+        "food_bank": "skipped" if recommended_action != "donate" else ("ok" if nearest_food_banks else "ok"),
+        "explanation": "error" if explanation.get("error") else "ok",
+    }
+
+
 def build_orchestration_graph() -> StateGraph:
-    """Build the decision orchestration StateGraph. STRICT order: Risk -> Feasibility -> Cost -> Decision -> (Food bank if donate) -> Synthesize -> Explanation."""
+    """Build the decision orchestration StateGraph. STRICT order: Risk -> Feasibility & Cost (merged) -> Decision -> (Food bank if donate) -> Synthesize -> Explanation."""
     builder = StateGraph(DecisionOrchestratorState)
 
     builder.add_node("assess_risk", assess_risk)
-    builder.add_node("check_feasibility", check_feasibility)
-    builder.add_node("assess_cost_impact", assess_cost_impact)
+    builder.add_node("check_feasibility_and_cost", check_feasibility_and_cost)
     builder.add_node("run_decision_engine", run_decision_engine)
     builder.add_node("get_donation_options", get_donation_options)
     builder.add_node("synthesize_recommendation", synthesize_recommendation)
     builder.add_node("generate_explanation", generate_explanation)
 
     builder.add_edge(START, "assess_risk")
-    builder.add_edge("assess_risk", "check_feasibility")
-    builder.add_edge("check_feasibility", "assess_cost_impact")
-    builder.add_edge("assess_cost_impact", "run_decision_engine")
+    builder.add_edge("assess_risk", "check_feasibility_and_cost")
+    builder.add_edge("check_feasibility_and_cost", "run_decision_engine")
     builder.add_conditional_edges(
         "run_decision_engine",
         _should_call_food_bank,
@@ -1321,28 +1576,36 @@ def _rule_only_waste_recommendations(items: List[dict], user_asked_about_waste: 
         item_data = it.get("item_data", {}) or {}
         item_name = item_data.get("item_name", "Item")
         remaining_stock = it.get("remaining_stock", 0) or 0
-        forecasted_demand = it.get("forecasted_demand")
+        # Backend/DB often send predicted_demand; use as fallback so discount triggers for lot high + low demand
+        forecasted_demand = it.get("forecasted_demand") or it.get("predicted_demand") or item_data.get("forecasted_demand") or item_data.get("predicted_demand")
         selling_price = item_data.get("selling_price")
-        expiry_date = item_data.get("expiry_date")
-        days_until_expiry = None
-        if expiry_date:
+        if selling_price is None:
+            unit_cost = get_latest_unit_cost_from_sales(inv_id)
+            if unit_cost is not None:
+                try:
+                    selling_price = _suggested_selling_price_from_cost(unit_cost)
+                except (TypeError, ValueError):
+                    pass
+        if selling_price is not None:
             try:
-                from datetime import date
-                d = expiry_date if isinstance(expiry_date, date) else _dt.fromisoformat(str(expiry_date)[:10]).date()
-                days_until_expiry = (d - date.today()).days
-            except Exception:
-                pass
+                selling_price = float(selling_price)
+            except (TypeError, ValueError):
+                selling_price = None
+        days_until_expiry = _days_until_expiry_from_item(item_data, None)
         bundle_candidates = retrieve_bundle_candidates(inv_id, item_data, limit=10)
         try:
             similar_items = retrieve_similar_items_by_embedding(inv_id, limit=3)
         except Exception:
             similar_items = []
+        _cat = (item_data.get("category") or "").strip().lower()
+        _is_perishable = ("perishable" in _cat) and ("non-perishable" not in _cat)
         preferred = (it.get("context") or {}).get("waste_action_preference")
         _pk, reasoning, expected_outcome, overrides = pick_one_waste_suggestion(
             {}, {"is_feasible": True}, {"within_budget": True},
             nearest_food_banks, bundle_candidates, similar_items,
             remaining_stock, days_until_expiry, item_name, forecasted_demand, selling_price,
             preferred_waste_action=preferred,
+            is_perishable=_is_perishable,
         )
         rec = {
             "action": _pk,
@@ -1370,55 +1633,11 @@ def _rule_only_waste_recommendations(items: List[dict], user_asked_about_waste: 
     return results
 
 
-@app.route("/orchestrate_batch", methods=["POST"])
-def orchestrate_batch():
-    """Batch orchestration: one HTTP request with many items. Runs full pipeline (subagents + Mistral) per item; returns all recommendations in one response. Efficient for scaling (1 round-trip instead of N)."""
-    payload = request.get_json(silent=True) or {}
-    items = payload.get("items", [])
-    if not items:
-        return jsonify({"recommendations": [], "error": "items required"}), 400
-    items = items[:15]
-    graph = get_orchestration_graph()
-    results = []
-    for it in items:
-        initial_state = {
-            "inventory_id": it.get("inventory_id", ""),
-            "event_type": it.get("event_type", "low_stock"),
-            "remaining_stock": it.get("remaining_stock"),
-            "suggested_action": it.get("suggested_action", "reorder"),
-            "stock_signal": it.get("stock_signal", "low"),
-            "consumption_signal": it.get("consumption_signal", "normal"),
-            "forecasted_demand": it.get("forecasted_demand"),
-            "item_data": it.get("item_data", {}),
-            "consumption_history": it.get("consumption_history", []),
-            "context": it.get("context", {}),
-        }
-        try:
-            final_state = graph.invoke(initial_state)
-            rec = final_state.get("recommendation", {})
-            results.append({
-                "inventory_id": initial_state["inventory_id"],
-                "item_name": (initial_state.get("item_data") or {}).get("item_name", "Item"),
-                "recommendation": rec,
-                "risk_assessment": final_state.get("risk_assessment", {}),
-                "feasibility_check": final_state.get("feasibility_check", {}),
-                "cost_impact": final_state.get("cost_impact", {}),
-                "explanation": final_state.get("explanation", {}),
-            })
-        except Exception as e:
-            logger.error(f"Batch item {initial_state.get('inventory_id')} failed: {e}")
-            # Append a fallback so client gets one result per item
-            results.append({
-                "inventory_id": initial_state["inventory_id"],
-                "item_name": (initial_state.get("item_data") or {}).get("item_name", "Item"),
-                "recommendation": {"action": "hold", "priority": "Low", "reasoning": "Pipeline error; monitor stock.", "expected_outcome": "Review manually."},
-                "risk_assessment": {},
-                "feasibility_check": {},
-                "cost_impact": {},
-                "explanation": {},
-            })
-    logger.info("[Orchestrator] Batch complete | items=%s", len(results))
-    return jsonify({"recommendations": results}), 200
+# Refactored: all orchestration uses single-item /orchestrate only. Chat calls /orchestrate per item.
+# @app.route("/orchestrate_batch", methods=["POST"])
+# def orchestrate_batch():
+#     """Batch orchestration: one HTTP request with many items. Runs full pipeline per item. DEPRECATED: use /orchestrate per item."""
+#     ...
 
 
 @app.route("/orchestrate", methods=["POST"])
@@ -1429,6 +1648,9 @@ def orchestrate():
     item_name = (payload.get("item_data") or {}).get("item_name", "?")
     logger.info("[Orchestrator] Received request | item=%s | inventory_id=%s | event_type=%s", item_name, inv_id, payload.get("event_type", ""))
     
+    # Backend/DB often send predicted_demand; use as fallback so discount triggers for lot high + low demand
+    _item = payload.get("item_data") or {}
+    _fd = payload.get("forecasted_demand") or payload.get("predicted_demand") or _item.get("forecasted_demand") or _item.get("predicted_demand")
     initial_state: DecisionOrchestratorState = {
         "inventory_id": payload.get("inventory_id", ""),
         "event_type": payload.get("event_type", "low_stock"),
@@ -1436,7 +1658,7 @@ def orchestrate():
         "suggested_action": payload.get("suggested_action", "reorder"),
         "stock_signal": payload.get("stock_signal", "low"),
         "consumption_signal": payload.get("consumption_signal", "normal"),
-        "forecasted_demand": payload.get("forecasted_demand"),
+        "forecasted_demand": _fd,
         "item_data": payload.get("item_data", {}),
         "consumption_history": payload.get("consumption_history", []),
         "context": payload.get("context", {}),
@@ -1446,7 +1668,11 @@ def orchestrate():
     final_state = graph.invoke(initial_state)
     
     rec = final_state.get("recommendation", {})
-    logger.info("[Orchestrator] Pipeline complete | item=%s | inventory_id=%s | action=%s", item_name, inv_id, rec.get("action", "?"))
+    subagents_called = _subagents_called_from_state(final_state)
+    logger.info(
+        "[Orchestrator] Pipeline complete | item=%s | inventory_id=%s | action=%s | subagents_called=%s",
+        item_name, inv_id, rec.get("action", "?"), subagents_called,
+    )
     
     return jsonify({
         "recommendation": final_state.get("recommendation", {}),
@@ -1454,6 +1680,7 @@ def orchestrate():
         "feasibility_check": final_state.get("feasibility_check", {}),
         "cost_impact": final_state.get("cost_impact", {}),
         "explanation": final_state.get("explanation", {}),
+        "subagents_called": subagents_called,
     }), 200
 
 

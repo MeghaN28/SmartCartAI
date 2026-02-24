@@ -68,21 +68,21 @@ def get_db_connection():
 
 
 def get_near_expiry_items(within_days: int = 14) -> List[Dict]:
-    """Get items with expiry_date within the next within_days (for waste/donate/sell-soon flows)."""
+    """Get expired or near-expiry items (expiry_date in the past or within within_days). Top priority: expired first, then soonest to expire."""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         try:
+            # Include expired (expiry_date < today) and near-expiry (up to within_days ahead); order so expired first, then soonest
             cur.execute("""
                 SELECT inventory_id, item_name, category, form, usage,
                        opening_stock as remaining_stock, min_stock, max_capacity,
                        vendor_id, expiry_date, selling_price
                 FROM inventory
                 WHERE expiry_date IS NOT NULL
-                  AND expiry_date >= CURRENT_DATE
                   AND expiry_date <= CURRENT_DATE + INTERVAL '1 day' * %s
                 ORDER BY expiry_date ASC
-                LIMIT 20
+                LIMIT 50
             """, (within_days,))
         except Exception:
             conn.rollback()
@@ -378,16 +378,22 @@ def _extract_product_name_from_query(query_lower: str) -> Optional[str]:
 
 
 def _build_orchestrator_payload(item: Dict, user_asked_about_waste: bool, intent: str = "general", waste_action_preference: Optional[str] = None) -> Dict:
-    """Build a single item payload for /orchestrate or /orchestrate_batch. Pass intent so orchestrator calls only relevant subagents and returns only that action when set."""
+    """Build a single item payload for /orchestrate. Pass intent so orchestrator calls only relevant subagents and returns one recommended_action per item."""
     consumption_history = get_consumption_history(item['inventory_id'])
     if item.get('forecasted_demand') is not None:
         forecasted_demand = float(item['forecasted_demand'])
     else:
         forecasted_demand = calculate_forecasted_demand(consumption_history)
     demand_floor = get_demand_floor(item['inventory_id'])
-    forecasted_demand = max(forecasted_demand, demand_floor)
-    if forecasted_demand <= 0:
+    # Low manual demand (< 5) is a cap so discount can trigger; higher floor boosts forecast
+    if demand_floor < 5:
+        forecasted_demand = min(forecasted_demand, max(demand_floor, 0))
+    else:
+        forecasted_demand = max(forecasted_demand, demand_floor)
+    if forecasted_demand <= 0 and demand_floor >= 5:
         forecasted_demand = 25.0
+    elif forecasted_demand <= 0:
+        forecasted_demand = max(demand_floor, 0.1)  # respect low manual demand, avoid zero
     remaining_stock = item.get('remaining_stock', 0)
     min_stock = item.get('min_stock', 10)
     stock_signal = "critical" if remaining_stock == 0 else ("low" if remaining_stock < min_stock else "normal")
@@ -417,7 +423,7 @@ def _build_orchestrator_payload(item: Dict, user_asked_about_waste: bool, intent
             "min_stock": min_stock,
             "max_capacity": item.get('max_capacity', 1000),
             "vendor_id": item.get('vendor_id'),
-            "expiry_date": _serialize_date(item.get('expiry_date')),
+            "expiry_date": _serialize_date(item.get('expiry_date') or item.get('expiryDate')),
             "selling_price": float(item.get('selling_price')) if item.get('selling_price') is not None else None,
         },
         "consumption_history": consumption_history[:10],
@@ -426,31 +432,41 @@ def _build_orchestrator_payload(item: Dict, user_asked_about_waste: bool, intent
 
 
 def call_decision_orchestrator_batch(items: List[Dict], user_asked_about_waste: bool, intent: str = "general", waste_action_preference: Optional[str] = None) -> Tuple[Optional[List[Dict]], Optional[str]]:
-    """One request for many items. Pass waste_action_preference so orchestrator returns only discount/donate/bundle when user asked for that."""
+    """Call /orchestrate once per item; collect responses. All orchestration uses single-item endpoint only. Filter by recommended_action in caller."""
     if not items:
         return [], None
-    try:
-        # Limit batch size so one request finishes within timeout (orchestrator runs pipeline per item sequentially)
-        batch_items = items[:8]
-        # Preserve pricing intent so orchestrator routes to cost_impact then waste path for discount/price_increase %
-        payload_intent = intent if intent == "pricing" else ("waste" if user_asked_about_waste else intent)
-        payloads = [_build_orchestrator_payload(it, user_asked_about_waste or intent == "pricing", intent=payload_intent, waste_action_preference=waste_action_preference) for it in batch_items]
-        response = requests.post(
-            f"{DECISION_ORCHESTRATOR_URL}/orchestrate_batch",
-            json={"items": payloads, "user_asked_about_waste": user_asked_about_waste},
-            timeout=120,
-        )
-        if not response.ok:
-            if response.status_code == 404:
-                return None, "Batch returned 404 — restart the Decision Orchestrator (port 9000) so it loads the latest code with /orchestrate_batch."
-            return None, f"Batch returned {response.status_code}"
-        data = response.json()
-        recs = data.get("recommendations", [])
-        # Return list of same shape as single orchestrate: each element is full response with "recommendation" key
-        return recs, None
-    except Exception as e:
-        logger.error(f"Batch orchestrator failed: {e}")
-        return None, str(e)[:150]
+    # Same limit as before: process up to 8 items per "batch" (now N sequential /orchestrate calls)
+    batch_items = items[:8]
+    payload_intent = intent if intent == "pricing" else ("waste" if user_asked_about_waste else intent)
+    recs = []
+    for it in batch_items:
+        payload = _build_orchestrator_payload(it, user_asked_about_waste or intent == "pricing", intent=payload_intent, waste_action_preference=waste_action_preference)
+        try:
+            response = requests.post(f"{DECISION_ORCHESTRATOR_URL}/orchestrate", json=payload, timeout=30)
+            if not response.ok:
+                logger.warning("Orchestrate failed for item %s: %s", it.get("item_name"), response.status_code)
+                continue
+            data = response.json()
+            rec = data.get("recommendation", {})
+            action = rec.get("action", "")
+            item_name = (payload.get("item_data") or {}).get("item_name", "Item")
+            logger.info("Orchestrate item=%s recommended_action=%s", item_name, action)
+            recs.append({
+                "inventory_id": payload.get("inventory_id", ""),
+                "item_name": item_name,
+                "recommendation": rec,
+                "risk_assessment": data.get("risk_assessment", {}),
+                "feasibility_check": data.get("feasibility_check", {}),
+                "cost_impact": data.get("cost_impact", {}),
+                "explanation": data.get("explanation", {}),
+            })
+        except requests.exceptions.Timeout:
+            logger.warning("Orchestrate timeout for item %s", it.get("item_name"))
+        except Exception as e:
+            logger.error("Orchestrate failed for item %s: %s", it.get("item_name"), e)
+    if batch_items and not recs:
+        return None, "Could not get recommendations from orchestrator (all items failed or service unavailable)."
+    return recs, None
 
 
 def call_decision_orchestrator(item: Dict, user_asked_about_waste: bool = False, intent: str = "general") -> Tuple[Optional[Dict], Optional[str]]:
@@ -593,7 +609,7 @@ def _format_recommendation_line(
             next_week = round(float(fd) * 7, 1)
             parts.append(f" Demand (next 7 days): ~{next_week}")
     if reasoning:
-        cap = 200 if action.lower() in ("donate", "bundle", "discount") else 120
+        cap = 200 if action.lower() in ("donate", "bundle", "discount", "discard") else 120
         parts.append(f" — {reasoning[:cap]}" + ("..." if len(reasoning) > cap else ""))
     extras = []
     if rec.get("suggested_discount_percent") is not None:
@@ -627,7 +643,7 @@ def _format_recommendation_line(
             extras.append("Donate to: " + "; ".join(donation_parts))
     if extras:
         parts.append(" | " + ", ".join(extras))
-    if include_reason and action.lower() not in ("donate", "bundle", "discount"):
+    if include_reason and action.lower() not in ("donate", "bundle", "discount", "discard"):
         # Don't append explanation when it's generic/error (no action, unable to generate, subagent down)
         explanation = recommendation.get("explanation", {})
         if isinstance(explanation, dict) and explanation.get("explanation"):
@@ -679,11 +695,11 @@ def process_proactive_summary(session_id: str = None) -> Dict:
         }
 
     lines = ["Here's what needs your attention right now:\n"]
-    waste_actions = ("donate", "discount", "bundle")
+    waste_actions = ("donate", "discount", "bundle", "discard")
 
-    # Waste / Near expiry: batch call for correct combined donate/discount/bundle; show only those actions (no hold); do not save
+    # Waste / Near expiry (expired + near-expiry, same as home page): top priority; show all in chatbot suggestions
     if near_expiry:
-        waste_items = near_expiry[:8]
+        waste_items = near_expiry[:24]
         recs, batch_err = call_decision_orchestrator_batch(
             waste_items, user_asked_about_waste=True, intent="waste", waste_action_preference=None
         )
@@ -731,6 +747,18 @@ def process_proactive_summary(session_id: str = None) -> Dict:
     }
 
 
+def _query_looks_like_inventory(query_lower: str) -> bool:
+    """True if the query clearly asks about inventory, stock, reorder, waste, suggestions, etc. Used to skip inventory path for general questions."""
+    inventory_phrases = [
+        "stock", "reorder", "inventory", "waste", "donate", "donation", "discount", "bundle",
+        "suggest", "recommend", "check", "analyze", "low stock", "out of stock", "need to order",
+        "what to reorder", "expir", "expiry", "going to waste", "items need", "items to",
+        "stock level", "stock for", "demand for", "forecast", "pricing", "price increase",
+        "what should i", "what do you recommend", "help with inventory",
+    ]
+    return any(p in query_lower for p in inventory_phrases)
+
+
 def _detect_chat_intent(query_lower: str) -> str:
     """Detect primary intent so we return only relevant info. Uses shared intent_parser when available."""
     if not query_lower:
@@ -755,6 +783,8 @@ def _detect_chat_intent(query_lower: str) -> str:
         return "stock"
     if any(w in query_lower for w in ["forecast demand", "demand for", "demand forecast"]):
         return "demand"
+    if any(w in query_lower for w in ["discard", "dispose", "expired", "throw away", "which items to discard"]):
+        return "discard"
     if any(w in query_lower for w in ["waste", "donate", "donation", "discount", "bundle", "bundled", "sell soon", "expir", "expiry", "going to waste", "sell or donate", "anything to sell", "anything to donate"]):
         return "waste"
     if any(w in query_lower for w in ["pricing", "price", "discount %", "discount percent", "increase price", "markup"]):
@@ -764,11 +794,61 @@ def _detect_chat_intent(query_lower: str) -> str:
     return "general"
 
 
+def _answer_with_llm_only(query: str) -> Dict:
+    """Answer general (non-inventory) questions directly from the LLM. No inventory lookup or recommendations."""
+    if llm:
+        try:
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", """You are a helpful assistant. Answer the user's question concisely and clearly.
+IMPORTANT: Output plain text only. Do not use markdown: no asterisks for bold, no hashtags for headers. The answer will be shown in chat as-is."""),
+                ("user", "{query}"),
+            ])
+            chain = prompt | llm
+            response = chain.invoke({"query": query})
+            answer = response.content if hasattr(response, "content") else str(response)
+            return {
+                "answer": strip_markdown(answer),
+                "suggestions_count": 0,
+                "suggestions": [],
+            }
+        except Exception as e:
+            logger.error(f"LLM-only answer failed: {e}")
+    return {
+        "answer": "I can help with general questions when the language model is configured. For inventory, ask about stock, reorder, or suggestions.",
+        "suggestions_count": 0,
+        "suggestions": [],
+    }
+
+
 def process_chat_query(query: str, session_id: str = None) -> Dict:
     """Process a chat query: check inventory, call decision agent, store suggestions. Filter by intent."""
     query_lower = query.lower().strip()
     query_tokens = [t for t in query.split() if t]
     intent = _detect_chat_intent(query_lower)
+
+    def _is_low_or_out_stock(it: Dict) -> bool:
+        """Low/out-of-stock items should only appear in reorder suggestions."""
+        stock = it.get("remaining_stock")
+        if stock is None:
+            stock = it.get("opening_stock")
+        try:
+            stock_val = int(stock) if stock is not None else None
+        except Exception:
+            stock_val = None
+        if stock_val is None:
+            return False
+        if stock_val <= 0:
+            return True
+        min_s = it.get("min_stock")
+        try:
+            min_val = int(min_s) if min_s is not None else None
+        except Exception:
+            min_val = None
+        return (min_val is not None) and (stock_val <= min_val)
+
+    # General questions with no inventory keywords → answer directly from LLM (no inventory analysis or recommendations)
+    if intent == "general" and not _query_looks_like_inventory(query_lower):
+        return _answer_with_llm_only(query)
 
     # Check if this is a question that should trigger suggestions
     should_generate_suggestions = any(word in query_lower for word in [
@@ -777,7 +857,7 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
     ])
     # Waste / expiry / donate / discount / bundle triggers (Chat-side)
     waste_trigger = any(word in query_lower for word in [
-        "waste", "donate", "donation", "discount", "bundle", "bundled", "sell soon", "expir", "expiry", "going to waste",
+        "waste", "donate", "donation", "discount", "bundle", "bundled", "discard", "dispose", "sell soon", "expir", "expiry", "going to waste",
         "sell or donate", "anything to sell", "anything to donate", "whats going to waste"
     ])
     if waste_trigger:
@@ -799,8 +879,8 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
         out_ids = {i["inventory_id"] for i in out_of_stock}
         items = list(out_of_stock) + [i for i in low_stock if i["inventory_id"] not in out_ids]
         inventory_query_type = "low_stock" if items else "out_of_stock"
-    elif intent == "waste" or intent in ("donate", "discount", "bundle"):
-        # "Which items to donate", "what can be discounted", "items to bundle" → same item set as waste
+    elif intent == "waste" or intent in ("donate", "discount", "bundle", "discard"):
+        # "Which items to donate/discount/bundle/discard" → same item set as waste (near-expiry)
         items = get_near_expiry_items(within_days=14)
         if not items and inv_err:
             items = get_items_needing_attention(query)
@@ -813,7 +893,7 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
     if intent != "stock" and intent != "demand" and items and inventory_query_type in ("near_expiry", "low_stock", "out_of_stock", "overstock", "demand"):
         should_generate_suggestions = True
     # Use Inventory Agent's interpretation: if it said "near_expiry", treat as waste; donate/discount/bundle are waste sub-intents
-    is_waste_query = (intent in ("waste", "donate", "discount", "bundle")) or waste_trigger or (inventory_query_type == "near_expiry")
+    is_waste_query = (intent in ("waste", "donate", "discount", "bundle", "discard")) or waste_trigger or (inventory_query_type == "near_expiry")
     # If we have items and any has expiry within 14 days, run waste intervention (discount/bundle/donate)
     if items and not is_waste_query:
         try:
@@ -960,9 +1040,14 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
             consumption_history = get_consumption_history(item.get("inventory_id"))
             forecasted_demand = calculate_forecasted_demand(consumption_history)
             demand_floor = get_demand_floor(item.get("inventory_id", ""))
-            forecasted_demand = max(forecasted_demand, demand_floor)
-            if forecasted_demand <= 0:
+            if demand_floor < 5:
+                forecasted_demand = min(forecasted_demand, max(demand_floor, 0))
+            else:
+                forecasted_demand = max(forecasted_demand, demand_floor)
+            if forecasted_demand <= 0 and demand_floor >= 5:
                 forecasted_demand = 25.0
+            elif forecasted_demand <= 0:
+                forecasted_demand = max(demand_floor, 0.1)
             answer_parts.append(f"{name}: forecasted demand {forecasted_demand:.1f} units/day (next 7 days)")
         if answer_parts:
             return {"answer": "\n".join(answer_parts), "suggestions_count": 0, "suggestions": []}
@@ -1022,6 +1107,8 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                 answer_parts.append("I've checked items that may be suitable for discounting.")
             elif intent == "bundle":
                 answer_parts.append("I've checked items that may be suitable for bundling.")
+            elif intent == "discard":
+                answer_parts.append("I've checked items that should be discarded (expired).")
             else:
                 answer_parts.append("I've checked items that may be going to waste.")
         else:
@@ -1032,6 +1119,8 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
         # Waste/expiry: one batch request. Sort by expiry (soonest first) so DISCOUNT candidates (near-term expiry) get into the batch.
         if is_waste_query and items:
             from datetime import date as _date
+            # Low/out-of-stock should only show under reorder, never donate/discount/bundle/discard.
+            items = [it for it in items if not _is_low_or_out_stock(it)]
             def _expiry_sort_key(it):
                 ed = it.get("expiry_date")
                 if ed is None:
@@ -1043,23 +1132,9 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                     return (_date.max,)
             waste_items_sorted = sorted(items, key=_expiry_sort_key)
             batch_size = 8   # keep under batch timeout (orchestrator runs pipeline per item; 8 items ~within 120s)
-            # When user asks for one action (discount/donate/bundle), tell orchestrator so it returns only that action
+            # Do not pass waste_action_preference: orchestrator computes one canonical action per item (hierarchy).
+            # We filter by that stored action below when user asks "what to discount/donate/bundle" to avoid duplicates.
             waste_action_preference = None
-            if intent == "waste" or intent in ("donate", "discount", "bundle"):
-                if intent == "donate":
-                    waste_action_preference = "donate"
-                elif intent == "discount":
-                    waste_action_preference = "discount"
-                elif intent == "bundle":
-                    waste_action_preference = "bundle"
-                elif "pricing" in query_lower and "discount" in query_lower:
-                    pass  # show all
-                elif "discount" in query_lower:
-                    waste_action_preference = "discount"
-                elif "donation" in query_lower or "donate" in query_lower or "donated" in query_lower:
-                    waste_action_preference = "donate"
-                elif "bundle" in query_lower or "bundled" in query_lower:
-                    waste_action_preference = "bundle"
             # Process all near-expiry items in batches of 8 (up to 4 batches = 32 items) so "28 items expiring" gets all checked
             recs = []
             batch_err = None
@@ -1081,19 +1156,22 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                 answer_parts.append(f"• Could not get recommendations — {batch_err}")
             elif recs:
                 items_by_id = {it["inventory_id"]: it for it in items}
-                waste_actions = ("donate", "discount", "bundle")
-                # Sub-intent: "which items need discount?" -> only discount; "need donation?" -> only donate; "can be bundled?" -> only bundle
-                # Don't filter when user asks for both (e.g. "pricing or discount") so they see all relevant suggestions.
+                waste_actions = ("donate", "discount", "bundle", "discard")
+                # Filter by stored action: each item has exactly one action from the hierarchy; show only items matching the user's question.
                 waste_action_filter = None
-                if intent == "waste" or intent in ("donate", "discount", "bundle"):
+                if intent == "waste" or intent in ("donate", "discount", "bundle", "discard"):
                     if intent == "donate":
                         waste_action_filter = "donate"
                     elif intent == "discount":
                         waste_action_filter = "discount"
                     elif intent == "bundle":
                         waste_action_filter = "bundle"
+                    elif intent == "discard":
+                        waste_action_filter = "discard"
                     elif "pricing" in query_lower and "discount" in query_lower:
                         waste_action_filter = None
+                    elif "discard" in query_lower or "dispose" in query_lower:
+                        waste_action_filter = "discard"
                     elif "discount" in query_lower:
                         waste_action_filter = "discount"
                     elif "donation" in query_lower or "donate" in query_lower or "donated" in query_lower:
@@ -1107,6 +1185,9 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                     if not item:
                         continue
                     rec_action = (rec.get("recommendation") or {}).get("action", "")
+                    # Low/out-of-stock items are reorder only: never show under donate/discount/bundle/discard/waste lists
+                    if _is_low_or_out_stock(item):
+                        continue
                     # Intent filter: waste query -> only show donate, discount, bundle (not hold or price_increase)
                     if intent == "waste" and rec_action not in waste_actions:
                         continue
@@ -1145,7 +1226,7 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                     try:
                         idx = next(i for i, p in enumerate(answer_parts) if p == "Here are my recommendations:\n")
                         action_intro = (
-                            {"discount": "These can be discounted:\n", "donate": "These can be donated:\n", "bundle": "These can be bundled:\n"}.get(waste_action_filter or "")
+                            {"discount": "These can be discounted:\n", "donate": "These can be donated:\n", "bundle": "These can be bundled:\n", "discard": "These should be discarded:\n"}.get(waste_action_filter or "")
                             or ("Pricing suggestions:\n" if intent == "pricing" else None)
                         )
                         if action_intro:
@@ -1154,9 +1235,18 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                         pass
                 # When user asked for one action and none matched, say so and explain why
                 if waste_action_filter and waste_shown == 0:
-                    filter_label = {"discount": "discount", "donate": "donation", "bundle": "bundling"}.get(waste_action_filter, waste_action_filter)
+                    filter_label = {"discount": "discount", "donate": "donation", "bundle": "bundling", "discard": "discard"}.get(waste_action_filter, waste_action_filter)
                     answer_parts.append(f"No items are currently recommended for {filter_label}.")
-                    answer_parts.append("Donation applies to items with high stock, low demand, and near expiry. Discount applies to high stock and low demand. Your near-expiry items may fit bundling instead (medium stock + good demand). Ask \"What's going to waste?\" to see all suggestions.")
+                    if waste_action_filter == "donate":
+                        answer_parts.append("Donation is recommended only for PERISHABLE items expiring in 0–3 days (urgent). If nothing is that close to expiry, you may see discounts/bundles instead.")
+                    elif waste_action_filter == "discount":
+                        answer_parts.append("Discount is recommended for items expiring in ~4–10 days (especially high stock) and for 11–14 days when stock is high. Ask \"What's going to waste?\" to see all actions.")
+                    elif waste_action_filter == "bundle":
+                        answer_parts.append("Bundling is recommended for MEDIUM stock (20–119) items within the near-expiry window (e.g., 4–10 days or 11–14 days) to increase sell-through. Ask \"What's going to waste?\" to see all actions.")
+                    elif waste_action_filter == "discard":
+                        answer_parts.append("Discard is recommended only for EXPIRED items (past expiry). If none are expired, you may see donate/discount/bundle instead.")
+                    else:
+                        answer_parts.append("Ask \"What's going to waste?\" to see all suggested actions (donate/discount/bundle/discard).")
                 # Do not save or mention items with no matching action (donate/discount/bundle) when user asked for one
             else:
                 answer_parts.append("• No recommendations returned from batch.")
@@ -1321,5 +1411,8 @@ if __name__ == "__main__":
     logger.info(f"Starting Chat Agent Flask server on port {port}")
     logger.info(f"Health check: http://localhost:{port}/health")
     logger.info(f"Chat endpoint: http://localhost:{port}/chat")
-    # debug=True + use_reloader=True so code changes take effect without restarting
-    app.run(host="0.0.0.0", port=port, debug=True, threaded=True, use_reloader=True)
+    # Avoid duplicate processes binding the same port when started via nohup/scripts.
+    # Opt-in reloader for local dev only: CHAT_USE_RELOADER=true
+    use_reloader = os.getenv("CHAT_USE_RELOADER", "false").lower() in ("1", "true", "yes")
+    debug = os.getenv("CHAT_DEBUG", "false").lower() in ("1", "true", "yes")
+    app.run(host="0.0.0.0", port=port, debug=debug, threaded=True, use_reloader=use_reloader)

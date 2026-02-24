@@ -41,20 +41,12 @@ RISK_PID=$!
 echo -e "${GREEN}Risk Assessment Agent started (PID: $RISK_PID)${NC}"
 cd ../../../../
 
-# Start Feasibility Agent (port 9001)
-cd Agents/decision-orchestration-agent/subagents/feasibility
-export PORT=9001
-nohup python3 agent.py >> ../../../../logs/feasibility.log 2>&1 &
-FEASIBILITY_PID=$!
-echo -e "${GREEN}Feasibility Agent started (PID: $FEASIBILITY_PID)${NC}"
-cd ../../../../
-
-# Start Cost Impact Agent (port 9002)
+# Start Feasibility & Cost Impact Agent (port 9002, merged)
 cd Agents/decision-orchestration-agent/subagents/cost-impact
 export PORT=9002
 nohup python3 agent.py >> ../../../../logs/cost-impact.log 2>&1 &
 COST_PID=$!
-echo -e "${GREEN}Cost Impact Agent started (PID: $COST_PID)${NC}"
+echo -e "${GREEN}Feasibility & Cost Impact Agent started (PID: $COST_PID)${NC}"
 cd ../../../../
 
 # Start Explanation Agent (port 9003)
@@ -109,7 +101,6 @@ cd ../../
 
 # Save PIDs to file for easy stopping
 echo "$RISK_PID" > logs/risk-assessment.pid
-echo "$FEASIBILITY_PID" > logs/feasibility.pid
 echo "$COST_PID" > logs/cost-impact.pid
 echo "$EXPLANATION_PID" > logs/explanation.pid
 echo "$FOODBANK_PID" > logs/food-bank.pid
@@ -121,14 +112,13 @@ echo ""
 echo -e "${GREEN}All agents started successfully!${NC}"
 echo ""
 echo "Agent Status:"
-echo "  - Risk Assessment:     http://localhost:9004/health"
-echo "  - Feasibility:         http://localhost:9001/health"
-echo "  - Cost Impact:          http://localhost:9002/health"
-echo "  - Explanation:         http://localhost:9003/health"
-echo "  - Food Bank:            http://localhost:9007/health"
-echo "  - Chat Agent:           http://localhost:9006/health"
-echo "  - Decision Orchestrator: http://localhost:9000/health"
-echo "  - Inventory Monitoring:  http://localhost:9005/health"
+echo "  - Risk Assessment:        http://localhost:9004/health"
+echo "  - Feasibility & Cost:      http://localhost:9002/health"
+echo "  - Explanation:            http://localhost:9003/health"
+echo "  - Food Bank:               http://localhost:9007/health"
+echo "  - Chat Agent:              http://localhost:9006/health"
+echo "  - Decision Orchestrator:   http://localhost:9000/health"
+echo "  - Inventory Monitoring:    http://localhost:9005/health"
 echo ""
 echo "Logs are in the 'logs/' directory"
 echo ""

@@ -8,6 +8,9 @@ import SearchBar from '../components/SearchBar';
 import FilterSection from '../components/FilterSection';
 import InventoryGrid from '../components/InventoryGrid';
 
+/** Must match agent: Chat & Inventory use within_days=14 (expired + next 14 days = "near expiry"). */
+const EXPIRY_SOON_WITHIN_DAYS = 14;
+
 const getStockStatus = (item) => {
   if (item.quantity === 0) return 'out-of-stock';
   if (item.quantity > 0 && item.quantity <= item.threshold) return 'low-stock';
@@ -25,9 +28,10 @@ const getDaysUntilExpiry = (expiryDate) => {
   return Math.ceil((d - today) / (1000 * 60 * 60 * 24));
 };
 
-const isExpirySoon = (item, withinDays = 14) => {
+/** Same rule as agent: expiry_date <= today + EXPIRY_SOON_WITHIN_DAYS (expired first, then soonest). */
+const isExpirySoon = (item, withinDays = EXPIRY_SOON_WITHIN_DAYS) => {
   const days = getDaysUntilExpiry(item.expiryDate);
-  return days != null && days >= 0 && days <= withinDays;
+  return days != null && days <= withinDays;
 };
 
 const statusLabels = { 'in-stock': 'In Stock', 'low-stock': 'Low Stock', 'out-of-stock': 'Out of Stock', 'expiry-soon': 'Expiry Soon' };
@@ -92,6 +96,14 @@ export default function HomeScreen() {
         case 'status':
           const order = { 'out-of-stock': 0, 'low-stock': 1, 'in-stock': 2 };
           return order[getStockStatus(a)] - order[getStockStatus(b)];
+        case 'expiry': {
+          const da = getDaysUntilExpiry(a.expiryDate);
+          const db = getDaysUntilExpiry(b.expiryDate);
+          if (da == null && db == null) return 0;
+          if (da == null) return 1;
+          if (db == null) return -1;
+          return da - db;
+        }
         default: return 0;
       }
     });

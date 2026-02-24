@@ -134,7 +134,7 @@ def fetch_inventory_item(inventory_id: str) -> Optional[dict]:
 
 
 def get_near_expiry_items(within_days: int = 14) -> List[dict]:
-    """Get items with expiry_date within the next within_days (for waste/donate/sell-soon flows)."""
+    """Get expired or near-expiry items (expiry in past or within within_days). Expired first, then soonest to expire (same as home page / chatbot)."""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -145,10 +145,9 @@ def get_near_expiry_items(within_days: int = 14) -> List[dict]:
                        vendor_id, expiry_date, selling_price
                 FROM inventory
                 WHERE expiry_date IS NOT NULL
-                  AND expiry_date >= CURRENT_DATE
                   AND expiry_date <= CURRENT_DATE + INTERVAL '1 day' * %s
                 ORDER BY expiry_date ASC
-                LIMIT 20
+                LIMIT 50
             """, (within_days,))
         except Exception:
             conn.rollback()
