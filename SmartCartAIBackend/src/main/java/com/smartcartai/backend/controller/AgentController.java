@@ -29,6 +29,9 @@ public class AgentController {
     private static final String CHAT_AGENT_URL = System.getenv().getOrDefault(
         "CHAT_AGENT_URL", "http://localhost:9006"
     );
+    private static final String DASHBOARD_AGENT_URL = System.getenv().getOrDefault(
+        "DASHBOARD_AGENT_URL", "http://localhost:9008"
+    );
 
     @PostMapping("/inventory/signal")
     @Operation(summary = "Signal an inventory item to the Inventory Monitoring Agent")
@@ -154,6 +157,35 @@ public class AgentController {
     public ResponseEntity<Map<String, Object>> checkChatAgentHealth() {
         try {
             String url = CHAT_AGENT_URL + "/health";
+            Map<String, Object> response = restTemplate.getForObject(url, Map.class);
+            return ResponseEntity.ok(response != null ? response : new HashMap<>());
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            error.put("status", "unavailable");
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(error);
+        }
+    }
+
+    @PostMapping("/dashboard/item-insights")
+    @Operation(summary = "Get item insights for dashboard search popup")
+    public ResponseEntity<Map<String, Object>> dashboardItemInsights(@RequestBody Map<String, Object> payload) {
+        try {
+            String url = DASHBOARD_AGENT_URL + "/item-insights";
+            Map<String, Object> response = restTemplate.postForObject(url, payload, Map.class);
+            return ResponseEntity.ok(response != null ? response : new HashMap<>());
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
+    @GetMapping("/dashboard/health")
+    @Operation(summary = "Check Dashboard Agent health")
+    public ResponseEntity<Map<String, Object>> checkDashboardAgentHealth() {
+        try {
+            String url = DASHBOARD_AGENT_URL + "/health";
             Map<String, Object> response = restTemplate.getForObject(url, Map.class);
             return ResponseEntity.ok(response != null ? response : new HashMap<>());
         } catch (Exception e) {

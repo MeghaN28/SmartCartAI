@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, Modal, TouchableOpacity, ScrollView, StyleSheet, Dimensions } from 'react-native';
-import { BarChart } from 'react-native-chart-kit';
+import { BarChart, LineChart } from 'react-native-chart-kit';
 import { useTheme } from '../contexts/ThemeContext';
 import { colors, spacing, radius } from '../theme';
 
@@ -18,12 +18,12 @@ export default function ItemForecastModal({ item, parsed, onClose }) {
 
   if (!item || !parsed) return null;
 
-  const { currentStock, reorderLevel, lowStock, actions, recommendation, priority, reasoning, expectedOutcome, riskAssessment, costImpact } = parsed;
+  const { currentStock, reorderLevel, lowStock, actions, recommendation, priority, reasoning, expectedOutcome, riskAssessment, costImpact, salesChart, demandChart, stockChart, metrics } = parsed;
   const width = Dimensions.get('window').width - spacing.lg * 4;
 
   const barData = {
-    labels: ['Stock', 'Reorder'],
-    datasets: [{ data: [currentStock, reorderLevel] }],
+    labels: (stockChart && stockChart.labels) || ['Stock', 'Reorder'],
+    datasets: [{ data: (stockChart && stockChart.values) || [currentStock, reorderLevel] }],
   };
 
   const priorityColor = priority === 'High' ? c.danger : priority === 'Medium' ? c.warning : c.success;
@@ -65,6 +65,52 @@ export default function ItemForecastModal({ item, parsed, onClose }) {
             <Text style={[styles.chartTitle, { color: c.text }]}>Stock vs Threshold</Text>
             <BarChart data={barData} width={width} height={180} yAxisLabel="" chartConfig={chartConfig(c)} fromZero style={styles.chart} />
           </View>
+
+          {salesChart && salesChart.labels && salesChart.labels.length > 0 && (
+            <View style={[styles.chartBox, { backgroundColor: c.card, borderColor: c.border }]}>
+              <Text style={[styles.chartTitle, { color: c.text }]}>Sales Trend</Text>
+              <LineChart
+                data={{
+                  labels: salesChart.labels,
+                  datasets: [{ data: salesChart.quantity || [] }],
+                }}
+                width={width}
+                height={180}
+                chartConfig={chartConfig(c)}
+                fromZero
+                style={styles.chart}
+              />
+            </View>
+          )}
+
+          {demandChart && demandChart.labels && demandChart.labels.length > 0 && (
+            <View style={[styles.chartBox, { backgroundColor: c.card, borderColor: c.border }]}>
+              <Text style={[styles.chartTitle, { color: c.text }]}>Demand Trend</Text>
+              <LineChart
+                data={{
+                  labels: demandChart.labels,
+                  datasets: [{ data: demandChart.predicted || [] }],
+                }}
+                width={width}
+                height={180}
+                chartConfig={chartConfig(c)}
+                fromZero
+                style={styles.chart}
+              />
+            </View>
+          )}
+
+          {metrics && (
+            <View style={[styles.metricsBox, { backgroundColor: c.card, borderColor: c.border }]}>
+              <Text style={[styles.sectionTitle, { color: c.text }]}>Key Metrics</Text>
+              <Text style={[styles.metricText, { color: c.textSecondary }]}>Last 7D Sales Units: {metrics.last_7_sales_units ?? 0}</Text>
+              <Text style={[styles.metricText, { color: c.textSecondary }]}>Last 7D Revenue: ${Number(metrics.last_7_sales_revenue ?? 0).toFixed(2)}</Text>
+              <Text style={[styles.metricText, { color: c.textSecondary }]}>Latest Predicted Demand: {metrics.latest_predicted_demand ?? 0}</Text>
+              <Text style={[styles.metricText, { color: c.textSecondary }]}>
+                Stock Coverage (days): {metrics.stock_coverage_days ?? 'N/A'}
+              </Text>
+            </View>
+          )}
 
           {reasoning && (
             <View style={[styles.reasoningBox, { backgroundColor: c.card, borderColor: c.border }]}>
@@ -157,6 +203,8 @@ const styles = StyleSheet.create({
   costBox: { padding: spacing.md, borderRadius: radius.md, borderWidth: 1, marginBottom: spacing.md },
   costText: { fontSize: 14, fontWeight: '600', marginBottom: spacing.xs },
   budgetText: { fontSize: 13 },
+  metricsBox: { padding: spacing.md, borderRadius: radius.md, borderWidth: 1, marginBottom: spacing.md },
+  metricText: { fontSize: 13, marginBottom: 4 },
   actionsBox: { padding: spacing.md, borderRadius: radius.md, borderWidth: 1, marginBottom: spacing.md },
   actionsTitle: { fontSize: 14, fontWeight: '600', marginBottom: spacing.sm },
   actionItem: { fontSize: 13, marginBottom: 4 },

@@ -1,14 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  ActivityIndicator,
-  TextInput,
-  TouchableOpacity,
-  Alert,
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { colors, spacing, radius, typography } from '../theme';
 import { API } from '../config';
@@ -36,28 +27,6 @@ const getStockStatus = (item) => {
   return 'in-stock';
 };
 
-const parseAgentResponse = (text, item) => {
-  if (!text) return { currentStock: item.quantity, reorderLevel: item.threshold, lowStock: false, actions: [] };
-  let currentStock = item.quantity;
-  let reorderLevel = item.threshold;
-  let lowStock = item.quantity <= item.threshold;
-  let actions = [];
-  const stockMatch = text.match(/Current Stock on Hand:\s*(\d+)/i);
-  if (stockMatch) currentStock = parseInt(stockMatch[1], 10);
-  const reorderMatch = text.match(/Minimum Stock Limit:\s*(\d+)/i);
-  if (reorderMatch) reorderLevel = parseInt(reorderMatch[1], 10);
-  const lowMatch = text.match(/Low-Stock Warning:\s*(Yes|No)/i);
-  lowStock = lowMatch ? lowMatch[1].toLowerCase() === 'yes' : lowStock;
-  const actionBlock = text.match(/Recommended Actions:[\s\S]*/i);
-  if (actionBlock) {
-    actions = actionBlock[0]
-      .split('\n')
-      .filter((l) => l.trim().startsWith('-'))
-      .map((l) => l.replace('-', '').trim());
-  }
-  return { currentStock, reorderLevel, lowStock, actions };
-};
-
 export default function DashboardScreen() {
   const { theme } = useTheme();
   const c = colors[theme] || colors.dark;
@@ -79,6 +48,7 @@ export default function DashboardScreen() {
   const [proactiveAlert, setProactiveAlert] = useState(null);
   const [proactiveLoading, setProactiveLoading] = useState(true);
   const [proactiveError, setProactiveError] = useState(null);
+  const [salesChartData, setSalesChartData] = useState({ labels: [], quantity: [] });
 
   const itemsPerPage = 20;
 
@@ -130,6 +100,21 @@ export default function DashboardScreen() {
       .catch(() => {
         setInventory([]);
         setLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    fetch(API.dashboardOverview)
+      .then((res) => res.json())
+      .then((data) => {
+        const chart = data?.salesChart || {};
+        setSalesChartData({
+          labels: Array.isArray(chart.labels) ? chart.labels : [],
+          quantity: Array.isArray(chart.quantity) ? chart.quantity.map(safeNumber) : [],
+        });
+      })
+      .catch(() => {
+        setSalesChartData({ labels: [], quantity: [] });
       });
   }, []);
 
@@ -286,26 +271,58 @@ export default function DashboardScreen() {
     }
   };
 
-  /** Ask SmartCart AI Chat agent for suggestion (uses our agent, not iGentic). */
-  const askSmartCartForSuggestion = async () => {
-    const query = (selectedItemSearch || '').trim() || 'Check inventory and suggest actions';
+  const handleSearchInsights = async () => {
+    const query = (selectedItemSearch || '').trim();
+    if (!query) {
+      Alert.alert('Item required', 'Enter an item name to open recommendations.');
+      return;
+    }
     setSuggestionLoading(true);
     setAgentError(null);
     try {
-      const res = await fetch(API.agents.chat, {
+      const res = await fetch(API.agents.dashboardItemInsights, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, session_id: 'dashboard-' + Date.now() }),
+        body: JSON.stringify({ query }),
       });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || `Request failed: ${res.status}`);
       }
-      const answer = data.answer || 'Done. Check the Suggestions tab for details.';
-      Alert.alert('SmartCart AI', answer);
+
+      const item = data.item || {};
+      const metrics = data.metrics || {};
+      const recommendation = data.recommendation || {};
+      const charts = data.charts || {};
+      const itemForModal = {
+        id: item.inventory_id || query,
+        name: item.item_name || query,
+        category: item.category || 'Unknown',
+        quantity: safeNumber(metrics.current_stock),
+        threshold: safeNumber(metrics.min_stock),
+      };
+
+      setCurrentItem(itemForModal);
+      setParsedData({
+        currentStock: safeNumber(metrics.current_stock),
+        reorderLevel: safeNumber(metrics.min_stock),
+        lowStock: safeNumber(metrics.current_stock) <= safeNumber(metrics.min_stock),
+        recommendation: recommendation.action || 'monitor',
+        priority: recommendation.priority || 'Medium',
+        reasoning: recommendation.reasoning || 'No recommendation details available.',
+        expectedOutcome: metrics.stock_coverage_days
+          ? `Estimated stock coverage is ${metrics.stock_coverage_days} days.`
+          : 'No demand coverage estimate available.',
+        actions: recommendation.queries || [],
+        salesChart: charts.sales || null,
+        demandChart: charts.demand || null,
+        stockChart: charts.stock || null,
+        metrics,
+      });
+      setShowModal(true);
     } catch (err) {
       setAgentError(err.message || String(err));
-      Alert.alert('Error', err.message || 'Could not get suggestion. Ensure backend and Chat agent are running.');
+      Alert.alert('Error', err.message || 'Could not load item insights. Ensure backend and Dashboard agent are running.');
     } finally {
       setSuggestionLoading(false);
     }
@@ -340,27 +357,29 @@ export default function DashboardScreen() {
         <View style={styles.searchRow}>
           <TextInput
             style={[styles.searchInput, { color: c.text, backgroundColor: c.card, borderColor: c.border }]}
-            placeholder="Search or ask for suggestion (e.g. low stock, milk)..."
+            placeholder="Search item for AI insights (e.g. milk)..."
             placeholderTextColor={c.textMuted}
             value={selectedItemSearch}
             onChangeText={setSelectedItemSearch}
+            onSubmitEditing={handleSearchInsights}
+            returnKeyType="search"
           />
           <TouchableOpacity
             style={[styles.agentBtn, { backgroundColor: c.primary }]}
-            onPress={askSmartCartForSuggestion}
+            onPress={handleSearchInsights}
             disabled={suggestionLoading}
             activeOpacity={0.88}
           >
-            <Text style={styles.agentBtnText}>{suggestionLoading ? '…' : 'Get suggestion'}</Text>
+            <Text style={styles.agentBtnText}>{suggestionLoading ? '…' : 'Analyze'}</Text>
           </TouchableOpacity>
         </View>
         <Text style={[styles.hint, { color: c.textSecondary }]}>
-          SmartCart AI · Use Recommend in the table for a single-item suggestion.
+          Search and press Analyze to open the item insight popup with stock, sales, and demand charts.
         </Text>
       </View>
 
       <StatsGrid stats={stats} />
-      <ChartsSection categoryChartData={categoryChartData} statusData={statusData} colors={chartC} />
+      <ChartsSection categoryChartData={categoryChartData} statusData={statusData} salesChartData={salesChartData} colors={chartC} />
       <LowStockAlerts lowStockAlerts={lowStockAlerts} />
 
       <View style={[styles.section, styles.proactiveSection]}>

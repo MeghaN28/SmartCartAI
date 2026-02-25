@@ -8,6 +8,7 @@ Guidelines for working with the Python AI agents (Decision Orchestrator, Chat, I
 
 ### Running & startup
 - **Do** start the Decision Orchestrator (port 9000) and Chat Agent (port 9006) for chat and suggestions to work.
+- **Do** run the Dashboard Agent (port 9008) for dashboard search popups with sales/demand/stock charts.
 - **Do** run subagents (risk, feasibility-and-cost, explanation, food-bank) if you want the full recommendation pipeline; the orchestrator can fall back if they are down.
 - **Do** use `./start_agents.sh` or follow `Agents/RUN_AGENTS.md` for the correct startup order.
 - **Do** restart agents after code changes so the app uses the latest logic (Chat Agent can auto-reload when `use_reloader=True`).
@@ -38,6 +39,7 @@ Guidelines for working with the Python AI agents (Decision Orchestrator, Chat, I
 
 ### Running & ports
 - **Don't** run multiple instances of the same agent on the same port (e.g. two Chat Agents on 9006).
+- **Don't** change Dashboard Agent port without updating backend `DASHBOARD_AGENT_URL` and frontend dashboard API mappings.
 - **Don't** assume the full pipeline works if only the orchestrator and chat are running; subagents are optional but needed for full risk/feasibility/cost/explanation.
 - **Don't** start the backend (Spring Boot) before agents if the app depends on chat/orchestrate; start agents first, then backend, then frontend (see `START_SERVICES.md`).
 
@@ -73,5 +75,6 @@ Guidelines for working with the Python AI agents (Decision Orchestrator, Chat, I
 | Feasibility & Cost Impact| 9002 | Optional (full pipeline)     |
 | Explanation              | 9003 | Optional (full pipeline)     |
 | Food Bank                | 9007 | Optional (donate/discard)     |
+| Dashboard Agent          | 9008 | Yes (dashboard item insights popup) |
 
 For setup details, see `AGENTS_SETUP.md` and `Agents/RUN_AGENTS.md`.

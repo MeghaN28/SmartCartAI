@@ -38,7 +38,16 @@ cd Agents/inventory-agent
 python agent.py
 ```
 
-## 4. Optional: Subagents (for full recommendation pipeline)
+## 4. Dashboard Agent (port 9008)
+
+Needed for dashboard search popup insights (sales/demand/stock charts and recommendation).
+
+```bash
+cd Agents/dashboard-agent
+python agent.py
+```
+
+## 5. Optional: Subagents (for full recommendation pipeline)
 
 For full risk/feasibility/cost/explanation, run these in separate terminals from `Agents/decision-orchestration-agent`:
 
@@ -67,6 +76,7 @@ The Java backend expects:
 - `CHAT_AGENT_URL=http://localhost:9006` (default)
 - `DECISION_ORCHESTRATOR_URL=http://localhost:9000` (default)
 - `INVENTORY_AGENT_URL=http://localhost:9005` (default)
+- `DASHBOARD_AGENT_URL=http://localhost:9008` (default)
 
 If the app still shows old behavior, ensure:
 

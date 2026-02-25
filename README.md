@@ -9,6 +9,7 @@ SmartCartAI is an intelligent inventory management system that optimizes retail 
 - **Real-time Dashboard**: Monitor inventory status, at-risk items, agent actions, and impact metrics
 - **Mobile App**: Cross-platform React Native (Expo) app with dashboard, chatbot, inventory views, suggestion log, and upload/forecast screens
 - **Decision Orchestration**: Risk assessment, feasibility, cost-impact, explanation, and food-bank subagents coordinated by a central orchestrator with RAG over PostgreSQL
+- **Dashboard Agent Insights**: Item-level popup recommendations from dashboard search with stock/sales/demand chart data
 - **Data & Scripts**: Sample CSV datasets, Python data generation (`Dataset/`), and SQL scripts for demand/pricing tuning (`database/scripts/`)
 
 ## Screenshots
@@ -72,6 +73,7 @@ SmartCartAI/
 │   │   │   └── food-bank/        # 9007
 │   │   └── README.md
 │   ├── inventory-agent/      # Inventory monitoring & forecasting (port 9005)
+│   ├── dashboard-agent/      # Dashboard item insights (port 9008)
 │   └── common/               # Shared utilities (e.g. forecasting)
 │
 ├── SmartCartAIBackend/       # Spring Boot REST API (port 8080)

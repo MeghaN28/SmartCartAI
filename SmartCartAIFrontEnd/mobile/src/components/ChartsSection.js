@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
-import { BarChart, PieChart } from 'react-native-chart-kit';
+import { BarChart, PieChart, LineChart } from 'react-native-chart-kit';
 import { useTheme } from '../contexts/ThemeContext';
 import { colors, spacing, radius, typography, shadows } from '../theme';
 
@@ -19,7 +19,7 @@ const chartConfig = (c) => ({
   labelColor: () => c.textSecondary,
 });
 
-export default function ChartsSection({ categoryChartData, statusData, colors: chartColors }) {
+export default function ChartsSection({ categoryChartData, statusData, salesChartData, colors: chartColors }) {
   const { theme } = useTheme();
   const c = colors[theme] || colors.dark;
   const config = chartConfig(c);
@@ -33,6 +33,28 @@ export default function ChartsSection({ categoryChartData, statusData, colors: c
 
   return (
     <View style={styles.section}>
+      {salesChartData && salesChartData.labels && salesChartData.labels.length > 0 && (
+        <View
+          style={[
+            styles.chartCard,
+            { backgroundColor: c.card, borderColor: c.border },
+            shadows.sm,
+          ]}
+        >
+          <Text style={[styles.chartTitle, { color: c.text }]}>Sales Trend (7 Days)</Text>
+          <LineChart
+            data={{
+              labels: salesChartData.labels,
+              datasets: [{ data: salesChartData.quantity || [] }],
+            }}
+            width={width}
+            height={220}
+            chartConfig={config}
+            style={styles.chart}
+            fromZero
+          />
+        </View>
+      )}
       {categoryChartData && categoryChartData.length > 0 && (
         <View
           style={[

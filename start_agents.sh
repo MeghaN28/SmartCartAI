@@ -75,6 +75,15 @@ echo -e "${GREEN}Chat Agent started (PID: $CHAT_PID) on port 9006${NC}"
 echo -e "${YELLOW}  Chat Agent URL: http://localhost:9006/chat${NC}"
 cd ../../../../
 
+# Start Dashboard Agent (port 9008)
+cd Agents/dashboard-agent
+export PORT=9008
+nohup python3 agent.py >> ../../logs/dashboard-agent.log 2>&1 &
+DASHBOARD_PID=$!
+echo -e "${GREEN}Dashboard Agent started (PID: $DASHBOARD_PID) on port 9008${NC}"
+echo -e "${YELLOW}  Dashboard Agent URL: http://localhost:9008/item-insights${NC}"
+cd ../../
+
 # Wait a moment for subagents to start
 sleep 2
 
@@ -105,6 +114,7 @@ echo "$COST_PID" > logs/cost-impact.pid
 echo "$EXPLANATION_PID" > logs/explanation.pid
 echo "$FOODBANK_PID" > logs/food-bank.pid
 echo "$CHAT_PID" > logs/chat-agent.pid
+echo "$DASHBOARD_PID" > logs/dashboard-agent.pid
 echo "$ORCHESTRATOR_PID" > logs/orchestrator.pid
 echo "$INVENTORY_PID" > logs/inventory-agent.pid
 
@@ -117,6 +127,7 @@ echo "  - Feasibility & Cost:      http://localhost:9002/health"
 echo "  - Explanation:            http://localhost:9003/health"
 echo "  - Food Bank:               http://localhost:9007/health"
 echo "  - Chat Agent:              http://localhost:9006/health"
+echo "  - Dashboard Agent:         http://localhost:9008/health"
 echo "  - Decision Orchestrator:   http://localhost:9000/health"
 echo "  - Inventory Monitoring:    http://localhost:9005/health"
 echo ""

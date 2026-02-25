@@ -44,6 +44,8 @@ java -jar target/SmartCartAIBackend-1.0.0.jar
 | GET | `/api/sales` | List all sales |
 | GET | `/api/consumption` | List all consumption records |
 | GET | `/api/demand` | List all demand predictions |
+| GET | `/api/dashboard/overview` | Dashboard sales chart (7-day trend) |
+| POST | `/api/agents/dashboard/item-insights` | Proxy dashboard item insights from Dashboard Agent |
 
 ## Swagger UI
 
