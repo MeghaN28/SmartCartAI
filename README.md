@@ -46,6 +46,14 @@ SmartCartAI is an intelligent inventory management system that optimizes retail 
     <td><img src="Screenshot%202026-02-24%20at%2010.12.51%E2%80%AFPM.png" alt="Screenshot 13" width="260" /></td>
     <td><img src="Screenshot%202026-02-24%20at%2010.13.00%E2%80%AFPM.png" alt="Screenshot 14" width="260" /></td>
   </tr>
+  <tr>
+    <td><img src="Screenshot%202026-02-24%20at%2010.43.24%E2%80%AFPM.png" alt="Screenshot 15" width="260" /></td>
+    <td><img src="Screenshot%202026-02-24%20at%2010.43.32%E2%80%AFPM.png" alt="Screenshot 16" width="260" /></td>
+  </tr>
+  <tr>
+    <td><img src="Screenshot%202026-02-24%20at%2010.43.38%E2%80%AFPM.png" alt="Screenshot 17" width="260" /></td>
+    <td></td>
+  </tr>
 </table>
 
 </details>
@@ -67,8 +75,8 @@ SmartCartAI/
 │   │   ├── subagents/
 │   │   │   ├── chat/         # Chat Agent (port 9006)
 │   │   │   ├── risk-assessment/   # 9004
-│   │   │   ├── feasibility/      # 9001
-│   │   │   ├── cost-impact/      # 9002
+│   │   │   ├── cost-impact/      # 9002 (Feasibility + Cost Impact, merged)
+│   │   │   ├── feasibility/      # 9001 (legacy/optional)
 │   │   │   ├── explanation/      # 9003
 │   │   │   └── food-bank/        # 9007
 │   │   └── README.md
@@ -112,8 +120,9 @@ SmartCartAI/
 - **Agents — `Agents/`**  
   - **Chat Agent** (9006): User-facing entry point for natural-language chat. For DB-backed questions, it calls the Inventory Agent, then calls the Decision Orchestrator per flagged item and returns the final response (and can persist suggestions).  
   - **Inventory Agent** (9005): Interprets user intent and queries PostgreSQL (low stock, expired, near-expiring, waste, reorder, etc.). Returns “signals” (items needing attention) and can trigger orchestration.  
+  - **Dashboard Agent** (9008): Provides item-level insights for the dashboard search popup (stock/sales/demand charts + recommendations).  
   - **Decision Orchestration Agent** (9000): Runs the decision pipeline per item and synthesizes the final recommendation (RAG over PostgreSQL + optional LLM).  
-  - **Subagents (optional, full pipeline)**: Risk (9004) → Feasibility (9001) → Cost Impact (9002) → Food Bank (9007, donate/discard) → Explanation (9003).
+  - **Subagents (optional, full pipeline)**: Risk (9004) → Feasibility + Cost Impact (9002, merged) → Food Bank (9007, donate/discard) → Explanation (9003).
 
 - **Backend — `SmartCartAIBackend/`**  
   Single Spring Boot application. REST APIs for inventory/sales/consumption/demand/suggestions and an agent proxy endpoint that forwards chat to the Chat Agent. Swagger UI at `http://localhost:8080/swagger-ui.html`.
@@ -162,13 +171,14 @@ Optionally load sample data from `Dataset/` (see `Dataset/Copydata.txt` or use `
 ```
 
 **Minimum for chat/suggestions:** Decision Orchestrator (9000) + Chat Agent (9006).  
-**Optional:** Inventory Agent (9005) and the subagents (Risk/Feasibility/Cost/Explanation/Food Bank).
+**Optional:** Inventory Agent (9005), Dashboard Agent (9008), and the subagents (Risk/Feasibility+Cost/Explanation/Food Bank).
 
 Health checks:
 
 ```bash
 curl http://localhost:9006/health
 curl http://localhost:9000/health
+curl http://localhost:9008/health
 ```
 
 See `AGENTS_SETUP.md` and `Agents/RUN_AGENTS.md` for environment variables (use `.env` files; don’t commit real API keys/passwords).
