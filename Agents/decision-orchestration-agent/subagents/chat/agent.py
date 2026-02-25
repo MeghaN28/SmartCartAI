@@ -272,6 +272,98 @@ def get_perishable_items(limit: int = 30) -> List[Dict]:
         return []
 
 
+def get_non_perishable_items(limit: int = 30) -> List[Dict]:
+    """Return non-perishable items from inventory (DB-authoritative)."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT inventory_id, item_name, category, form, usage, item_type,
+                   opening_stock as remaining_stock, min_stock, max_capacity,
+                   vendor_id, expiry_date, selling_price
+            FROM inventory
+            ORDER BY item_name ASC
+            LIMIT %s
+            """,
+            (max(limit * 3, 60),),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+        cur.close()
+        conn.close()
+        out = []
+        for r in rows:
+            combined = " ".join([
+                str(r.get("item_type") or ""),
+                str(r.get("category") or ""),
+                str(r.get("usage") or ""),
+            ]).strip().lower()
+            if not combined:
+                continue
+            if any(tok in combined for tok in ("non-perishable", "non perishable", "nonperishable")):
+                out.append(r)
+                continue
+            # Defensive: if explicitly tagged perishable, do not classify as non-perishable.
+            if "perishable" in combined:
+                continue
+        return out[:limit]
+    except Exception as e:
+        logger.error(f"Error getting non-perishable items: {e}")
+        return []
+
+
+def get_sales_last_week(item_name: str, limit: int = 20) -> List[Dict]:
+    """Return last-7-days sales rows and aggregates for inventory items matching name.
+    "Last week" is computed from latest available sales date in DB, not wall-clock date.
+    """
+    if not item_name or not item_name.strip():
+        return []
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            WITH matched_items AS (
+              SELECT i.inventory_id, i.item_name
+              FROM inventory i
+              WHERE i.item_name ILIKE %s
+            ),
+            latest_per_item AS (
+              SELECT s.inventory_id, MAX(s.purchase_date)::date AS max_purchase_date
+              FROM sales s
+              JOIN matched_items m ON m.inventory_id = s.inventory_id
+              GROUP BY s.inventory_id
+            )
+            SELECT
+              m.inventory_id,
+              m.item_name,
+              COUNT(s.invoice_id) AS sales_rows,
+              COALESCE(SUM(s.quantity), 0) AS total_quantity,
+              COALESCE(AVG(s.unit_cost), 0) AS avg_unit_cost,
+              COALESCE(SUM(s.total_cost), 0) AS total_cost
+            FROM matched_items m
+            LEFT JOIN latest_per_item lp
+              ON lp.inventory_id = m.inventory_id
+            LEFT JOIN sales s
+              ON s.inventory_id = m.inventory_id
+             AND lp.max_purchase_date IS NOT NULL
+             AND s.purchase_date >= lp.max_purchase_date - INTERVAL '6 day'
+             AND s.purchase_date <= lp.max_purchase_date
+            GROUP BY m.inventory_id, m.item_name
+            ORDER BY total_quantity DESC, m.item_name ASC
+            LIMIT %s
+            """,
+            (f"%{item_name.strip()}%", limit),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+        cur.close()
+        conn.close()
+        return rows
+    except Exception as e:
+        logger.error(f"Error getting sales data for '{item_name}': {e}")
+        return []
+
+
 def get_demand_ranked_items(high: bool = True, limit: int = 15) -> List[Dict]:
     """Return items ranked by latest DB demand prediction (high or low)."""
     try:
@@ -486,6 +578,10 @@ def _extract_product_name_from_query(query_lower: str) -> Optional[str]:
         name_part = query_lower.split("forecast demand for ", 1)[-1].strip()
     elif "demand for " in query_lower:
         name_part = query_lower.split("demand for ", 1)[-1].strip()
+    elif "sales for " in query_lower:
+        name_part = query_lower.split("sales for ", 1)[-1].strip()
+    elif "last week sales for " in query_lower:
+        name_part = query_lower.split("last week sales for ", 1)[-1].strip()
     elif query_lower.strip().startswith("for "):
         name_part = query_lower.replace("for ", "", 1).strip()
     if name_part:
@@ -893,7 +989,7 @@ def _query_looks_like_inventory(query_lower: str) -> bool:
         "suggest", "recommend", "check", "analyze", "low stock", "out of stock", "need to order",
         "what to reorder", "expir", "expiry", "going to waste", "items need", "items to",
         "stock level", "stock for", "demand for", "forecast", "pricing", "price increase",
-        "what should i", "what do you recommend", "help with inventory",
+        "what should i", "what do you recommend", "help with inventory", "sales", "last week",
     ]
     return any(p in query_lower for p in inventory_phrases)
 
@@ -902,7 +998,11 @@ def _detect_chat_intent(query_lower: str) -> str:
     """Detect primary intent so we return only relevant info. Uses shared intent_parser when available."""
     if not query_lower:
         return "general"
+    if any(w in query_lower for w in ["sales last week", "last week sales", "sales for", "sales related"]):
+        return "sales"
     # Explicit intents first: these must not be overridden by generic parser labels.
+    if any(w in query_lower for w in ["non-perishable", "non perishable", "nonperishable", "non-perisbale", "non perisbale"]):
+        return "non_perishable"
     if ("perishable" in query_lower or "persihable" in query_lower) and any(w in query_lower for w in ["inventory", "my", "in my"]):
         return "perishable"
     if "high demand" in query_lower and any(w in query_lower for w in ["inventory", "my", "in my"]):
@@ -923,10 +1023,16 @@ def _detect_chat_intent(query_lower: str) -> str:
             return "demand"
         if intent == "recommendation":
             return "general"  # chat treats as general + should_generate_suggestions
+        if intent == "stock_status" and any(w in query_lower for w in ["sales", "last week"]):
+            return "sales"
         return intent
     except Exception:
         pass
     # Fallback: explicit intents (order matters: more specific first)
+    if any(w in query_lower for w in ["sales last week", "last week sales", "sales for", "sales related"]):
+        return "sales"
+    if any(w in query_lower for w in ["non-perishable", "non perishable", "nonperishable", "non-perisbale", "non perisbale"]):
+        return "non_perishable"
     if any(w in query_lower for w in ["price increase", "increase price", "items need price increase"]):
         return "price_increase"
     if any(w in query_lower for w in ["stock for", "stock of", "tell me stock", "what is the stock", "how much", "how many", "current stock", "stock level"]):
@@ -973,15 +1079,49 @@ IMPORTANT: Output plain text only. Do not use markdown: no asterisks for bold, n
 def process_chat_query(query: str, session_id: str = None) -> Dict:
     """Process a chat query: check inventory, call decision agent, store suggestions. Filter by intent."""
     query_lower = query.lower().strip()
+    # Normalize common typos/spaces so we stay on DB-backed intent paths.
+    query_lower = query_lower.replace("re order", "reorder").replace("re-order", "reorder")
+    query_lower = query_lower.replace("non perisbale", "non perishable").replace("non-perisbale", "non-perishable")
     query_tokens = [t for t in query.split() if t]
     intent = _detect_chat_intent(query_lower)
 
     # Direct informational intents (DB-only, no recommendation pipeline)
+    if intent == "sales":
+        item_name = _extract_product_name_from_query(query_lower) or ""
+        if not item_name:
+            # fallback from "sales last week for X"
+            if " for " in query_lower:
+                item_name = query_lower.split(" for ", 1)[-1].strip("?.!, ")
+        rows = get_sales_last_week(item_name, limit=20) if item_name else []
+        if not rows:
+            return {
+                "answer": "No sales records found in table `sales` for the last 7 days for the requested item.",
+                "suggestions_count": 0,
+                "suggestions": [],
+            }
+        lines = [f"Sales last 7 days for '{item_name}' (from sales table):"]
+        for r in rows:
+            lines.append(
+                f"• {r.get('item_name', 'Item')}: qty {int(r.get('total_quantity') or 0)}, "
+                f"rows {int(r.get('sales_rows') or 0)}, "
+                f"avg unit_cost {float(r.get('avg_unit_cost') or 0):.2f}, "
+                f"total_cost {float(r.get('total_cost') or 0):.2f}"
+            )
+        return {"answer": "\n".join(lines), "suggestions_count": 0, "suggestions": []}
+
     if intent == "perishable":
         rows = get_perishable_items(limit=50)
         if not rows:
             return {"answer": "No perishable items found in inventory.", "suggestions_count": 0, "suggestions": []}
         lines = ["Perishable items in your inventory:"]
+        for r in rows:
+            lines.append(f"• {r.get('item_name', 'Item')} (stock: {r.get('remaining_stock', 0)}, expiry: {r.get('expiry_date') or 'N/A'})")
+        return {"answer": "\n".join(lines), "suggestions_count": 0, "suggestions": []}
+    if intent == "non_perishable":
+        rows = get_non_perishable_items(limit=50)
+        if not rows:
+            return {"answer": "No non-perishable items found in inventory.", "suggestions_count": 0, "suggestions": []}
+        lines = ["Non-perishable items in your inventory:"]
         for r in rows:
             lines.append(f"• {r.get('item_name', 'Item')} (stock: {r.get('remaining_stock', 0)}, expiry: {r.get('expiry_date') or 'N/A'})")
         return {"answer": "\n".join(lines), "suggestions_count": 0, "suggestions": []}
@@ -1615,7 +1755,11 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
         answer_parts.append("Try asking about a specific item by name (e.g. \"apple\") or \"What items need reordering?\" when you have low stock.")
     
     else:
-        # Regular Q&A mode - just answer the question
+        # Regular Q&A mode. Avoid LLM hallucinations for inventory-like queries.
+        if _query_looks_like_inventory(query_lower):
+            answer_parts.append("I couldn't find matching DB records for that inventory query. Please try with an exact item name from your inventory.")
+            return {"answer": "\n".join(answer_parts), "suggestions_count": 0, "suggestions": []}
+        # Non-inventory general Q&A
         if llm:
             try:
                 summary = _get_inventory_summary()
