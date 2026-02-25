@@ -235,7 +235,7 @@ def get_overstock_items(limit: int = 10) -> List[Dict]:
 
 
 def get_perishable_items(limit: int = 30) -> List[Dict]:
-    """Return perishable items from inventory (DB-authoritative item_type)."""
+    """Return perishable items from inventory (DB-authoritative, with robust classification)."""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -245,17 +245,28 @@ def get_perishable_items(limit: int = 30) -> List[Dict]:
                    opening_stock as remaining_stock, min_stock, max_capacity,
                    vendor_id, expiry_date, selling_price
             FROM inventory
-            WHERE LOWER(COALESCE(item_type, '')) LIKE '%perishable%'
-              AND LOWER(COALESCE(item_type, '')) NOT LIKE '%non%perishable%'
             ORDER BY item_name ASC
             LIMIT %s
             """,
-            (limit,),
+            (max(limit * 3, 60),),
         )
         rows = [dict(r) for r in cur.fetchall()]
         cur.close()
         conn.close()
-        return rows
+        out = []
+        for r in rows:
+            combined = " ".join([
+                str(r.get("item_type") or ""),
+                str(r.get("category") or ""),
+                str(r.get("usage") or ""),
+            ]).strip().lower()
+            if not combined:
+                continue
+            if any(tok in combined for tok in ("non-perishable", "non perishable", "nonperishable")):
+                continue
+            if "perishable" in combined:
+                out.append(r)
+        return out[:limit]
     except Exception as e:
         logger.error(f"Error getting perishable items: {e}")
         return []
@@ -267,6 +278,7 @@ def get_demand_ranked_items(high: bool = True, limit: int = 15) -> List[Dict]:
         conn = get_db_connection()
         cur = conn.cursor()
         order = "DESC" if high else "ASC"
+        demand_filter = "l.predicted_demand >= t.p70" if high else "l.predicted_demand < t.p70"
         cur.execute(
             f"""
             WITH latest AS (
@@ -274,11 +286,17 @@ def get_demand_ranked_items(high: bool = True, limit: int = 15) -> List[Dict]:
               FROM demand d
               WHERE d.predicted_demand IS NOT NULL
               ORDER BY d.inventory_id, d.prediction_date DESC, d.demand_id DESC
+            ),
+            thr AS (
+              SELECT percentile_cont(0.70) WITHIN GROUP (ORDER BY predicted_demand) AS p70
+              FROM latest
             )
             SELECT i.inventory_id, i.item_name, i.item_type, i.expiry_date, i.opening_stock as remaining_stock,
                    i.min_stock, i.selling_price, l.predicted_demand as forecasted_demand
             FROM latest l
             JOIN inventory i ON i.inventory_id = l.inventory_id
+            CROSS JOIN thr t
+            WHERE t.p70 IS NOT NULL AND {demand_filter}
             ORDER BY l.predicted_demand {order}, i.item_name ASC
             LIMIT %s
             """,
@@ -884,6 +902,15 @@ def _detect_chat_intent(query_lower: str) -> str:
     """Detect primary intent so we return only relevant info. Uses shared intent_parser when available."""
     if not query_lower:
         return "general"
+    # Explicit intents first: these must not be overridden by generic parser labels.
+    if ("perishable" in query_lower or "persihable" in query_lower) and any(w in query_lower for w in ["inventory", "my", "in my"]):
+        return "perishable"
+    if "high demand" in query_lower and any(w in query_lower for w in ["inventory", "my", "in my"]):
+        return "high_demand"
+    if "low demand" in query_lower and any(w in query_lower for w in ["inventory", "my", "in my"]):
+        return "low_demand"
+    if any(w in query_lower for w in ["items need price increase", "what items need price increase", "which items need price increase"]):
+        return "price_increase"
     try:
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
         from intent_parser import parse_intent
@@ -900,12 +927,6 @@ def _detect_chat_intent(query_lower: str) -> str:
     except Exception:
         pass
     # Fallback: explicit intents (order matters: more specific first)
-    if "perishable" in query_lower and any(w in query_lower for w in ["inventory", "my", "in my"]):
-        return "perishable"
-    if "high demand" in query_lower and any(w in query_lower for w in ["inventory", "my", "in my"]):
-        return "high_demand"
-    if "low demand" in query_lower and any(w in query_lower for w in ["inventory", "my", "in my"]):
-        return "low_demand"
     if any(w in query_lower for w in ["price increase", "increase price", "items need price increase"]):
         return "price_increase"
     if any(w in query_lower for w in ["stock for", "stock of", "tell me stock", "what is the stock", "how much", "how many", "current stock", "stock level"]):
@@ -969,8 +990,53 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
         if not rows:
             return {"answer": "No demand prediction data found.", "suggestions_count": 0, "suggestions": []}
         lines = ["High-demand items (from latest DB predictions):"]
+        action_lines = []
+        info_lines = []
         for r in rows:
-            lines.append(f"• {r.get('item_name', 'Item')}: {r.get('forecasted_demand', 0)} units/day")
+            name = r.get("item_name", "Item")
+            demand = r.get("forecasted_demand", 0)
+            stock = r.get("remaining_stock")
+            min_s = r.get("min_stock")
+            try:
+                stock_v = int(stock) if stock is not None else None
+            except Exception:
+                stock_v = None
+            try:
+                min_v = int(min_s) if min_s is not None else None
+            except Exception:
+                min_v = None
+
+            is_low = (
+                stock_v is not None
+                and (stock_v <= 0 or (min_v is not None and stock_v <= min_v))
+            )
+            if is_low:
+                rec, err = call_decision_orchestrator(r, user_asked_about_waste=False, intent="reorder")
+                if rec and not err:
+                    action_lines.append(
+                        _format_recommendation_line(
+                            name,
+                            rec,
+                            include_reason=False,
+                            item=r,
+                            query_type="low_stock",
+                        )
+                    )
+                else:
+                    info_lines.append(
+                        f"• {name}: {demand} units/day, stock {stock_v if stock_v is not None else '?'}, min {min_v if min_v is not None else '?'}"
+                    )
+            else:
+                info_lines.append(
+                    f"• {name}: {demand} units/day, stock {stock_v if stock_v is not None else '?'}"
+                )
+        if action_lines:
+            lines.append("Action needed (high demand + low/out stock):")
+            lines.extend(action_lines)
+            lines.append("")
+        if info_lines:
+            lines.append("Other high-demand items:")
+            lines.extend(info_lines)
         return {"answer": "\n".join(lines), "suggestions_count": 0, "suggestions": []}
     if intent == "low_demand":
         rows = get_demand_ranked_items(high=False, limit=15)
@@ -1408,6 +1474,8 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                         answer_parts.append("Discard is recommended only for EXPIRED items (past expiry). If none are expired, you may see donate/discount/bundle instead.")
                     else:
                         answer_parts.append("Ask \"What's going to waste?\" to see all suggested actions (donate/discount/bundle/discard).")
+                if intent == "price_increase" and waste_shown == 0:
+                    answer_parts.append("No items are currently recommended for price increase.")
                 # Do not save or mention items with no matching action (donate/discount/bundle) when user asked for one
             else:
                 answer_parts.append("• No recommendations returned from batch.")
