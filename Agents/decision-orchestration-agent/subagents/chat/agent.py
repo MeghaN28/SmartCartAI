@@ -5,7 +5,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
-from datetime import datetime
+from datetime import date, datetime
 
 import json
 
@@ -1067,6 +1067,78 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
             min_val = None
         return (min_val is not None) and (stock_val <= min_val)
 
+    def _days_until_expiry(it: Dict) -> Optional[int]:
+        """Return days until expiry for an item, if available."""
+        expiry_raw = it.get("expiry_date")
+        if not expiry_raw:
+            return None
+        try:
+            expiry_dt = expiry_raw if isinstance(expiry_raw, date) else date.fromisoformat(str(expiry_raw)[:10])
+            return (expiry_dt - date.today()).days
+        except Exception:
+            return None
+
+    def _bundle_near_miss_reason(item: Dict, rec_action: str, rec_reasoning: str) -> str:
+        """Explain why an item missed the bundle rule."""
+        days = _days_until_expiry(item)
+        if days is None:
+            return "missing expiry_date, so bundle window cannot be evaluated"
+        if days < 0:
+            return f"expired ({abs(days)} day(s) ago); discard path takes priority"
+        if 0 <= days <= 3:
+            return f"urgent expiry in {days} day(s); donate/clearance path takes priority"
+        if 4 <= days <= 6:
+            return f"in {days}-day discount window, not the 7–10 day bundle window"
+        if days > 10:
+            return f"expires in {days} day(s), outside the 7–10 day bundle window"
+        if rec_action == "price_increase":
+            return "high demand item; price increase is prioritized over bundling"
+        if rec_action == "hold" and "No high-demand similar items available for a bundle" in rec_reasoning:
+            return "no similar high-demand pairing item found"
+        if rec_action == "hold" and "demand signal" in rec_reasoning.lower():
+            return "demand signal did not meet bundle rule (needs low demand)"
+        if rec_action and rec_action != "bundle":
+            return f"policy selected {rec_action.upper()} instead"
+        return "bundle conditions were not fully met"
+
+    def _get_bundle_near_miss_lines(recs: List[Dict], items_by_id: Dict, limit: int = 6) -> List[str]:
+        """Build near-miss lines for bundle intent when no strict bundle matches are found."""
+        with_expiry = []
+        for rec in recs:
+            inv_id = rec.get("inventory_id")
+            item = items_by_id.get(inv_id)
+            if not item or _is_low_or_out_stock(item):
+                continue
+            recommendation = rec.get("recommendation") or {}
+            rec_action = (recommendation.get("action") or "").strip().lower()
+            if rec_action == "bundle":
+                continue
+            name = item.get("item_name", "Item")
+            days = _days_until_expiry(item)
+            if days is None:
+                # For bundle near-miss, only show items with a valid expiry timeline.
+                continue
+            reason = _bundle_near_miss_reason(item, rec_action, recommendation.get("reasoning", ""))
+            entry = (name, reason, days)
+            with_expiry.append(entry)
+
+        # Prioritize items that are closest to bundle window (7–10 days), then soonest expiry.
+        def _sort_key(entry: Tuple[str, str, Optional[int]]) -> Tuple[int, int]:
+            _, _, days = entry
+            if days is None:
+                return (3, 9999)
+            if 7 <= days <= 10:
+                return (0, days)
+            if days > 10:
+                return (1, days - 10)
+            # days < 7
+            return (2, 7 - days)
+
+        with_expiry.sort(key=_sort_key)
+        selected = with_expiry[:limit]
+        lines = [f"• {name}: {reason}" for name, reason, _ in selected]
+        return lines
+
     # General questions with no inventory keywords → answer directly from LLM (no inventory analysis or recommendations)
     if intent == "general" and not _query_looks_like_inventory(query_lower):
         return _answer_with_llm_only(query)
@@ -1464,6 +1536,11 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                 if waste_action_filter and waste_shown == 0:
                     filter_label = {"discount": "discount", "donate": "donation", "bundle": "bundling", "discard": "discard"}.get(waste_action_filter, waste_action_filter)
                     answer_parts.append(f"No items are currently recommended for {filter_label}.")
+                    if waste_action_filter == "bundle":
+                        near_miss_lines = _get_bundle_near_miss_lines(recs, items_by_id, limit=6)
+                        if near_miss_lines:
+                            answer_parts.append("Near-miss bundle candidates:")
+                            answer_parts.extend(near_miss_lines)
                     if waste_action_filter == "donate":
                         answer_parts.append("Donation is recommended only for PERISHABLE items expiring in 0–3 days (urgent). If nothing is that close to expiry, you may see discounts/bundles instead.")
                     elif waste_action_filter == "discount":

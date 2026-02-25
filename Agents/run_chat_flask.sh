@@ -4,4 +4,8 @@ set -e
 cd "$(dirname "$0")/decision-orchestration-agent/subagents/chat"
 echo "Starting Chat Agent (Flask) on port 9006..."
 echo "Stop with Ctrl+C. Code changes will auto-reload."
-exec python agent.py
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+if command -v python >/dev/null 2>&1; then
+  PYTHON_BIN="python"
+fi
+exec "$PYTHON_BIN" agent.py

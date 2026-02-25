@@ -2,7 +2,7 @@
 import os
 import logging
 from typing import Dict, List
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import psycopg2
@@ -50,6 +50,26 @@ def assess_risk(inventory_id: str, item_data: Dict, remaining_stock: int,
     """Assess risk factors for an inventory item."""
     risk_factors = []
     risk_score = 0
+
+    def _is_perishable(data: Dict) -> bool:
+        item_type = str(data.get("item_type", "")).strip().lower()
+        if item_type:
+            if any(tok in item_type for tok in ("non-perishable", "non perishable", "nonperishable")):
+                return False
+            if "perishable" in item_type:
+                return True
+        category = str(data.get("category", "")).strip().lower()
+        return "perishable" in category
+
+    def _days_until_expiry(data: Dict):
+        raw = data.get("expiry_date") or data.get("expiryDate")
+        if not raw:
+            return None
+        try:
+            expiry_dt = raw if isinstance(raw, date) else date.fromisoformat(str(raw)[:10])
+            return (expiry_dt - date.today()).days
+        except Exception:
+            return None
     
     # Risk 1: Stock level below minimum
     min_stock = item_data.get("min_stock", 10)
@@ -104,6 +124,39 @@ def assess_risk(inventory_id: str, item_data: Dict, remaining_stock: int,
             "description": "Item is in a critical category",
         })
         risk_score += 15
+
+    # Risk 5: Perishable + near-expiry risk (added on top of stock/consumption scoring)
+    is_perishable = _is_perishable(item_data)
+    days_until_expiry = _days_until_expiry(item_data)
+    if days_until_expiry is not None:
+        if days_until_expiry < 0:
+            risk_factors.append({
+                "factor": "expired_item",
+                "severity": "critical",
+                "description": f"Item expired {abs(days_until_expiry)} day(s) ago",
+            })
+            risk_score += 45
+        elif is_perishable and days_until_expiry <= 3:
+            risk_factors.append({
+                "factor": "perishable_urgent_expiry",
+                "severity": "high",
+                "description": f"Perishable item expires in {days_until_expiry} day(s)",
+            })
+            risk_score += 30
+        elif is_perishable and days_until_expiry <= 10:
+            risk_factors.append({
+                "factor": "perishable_near_expiry",
+                "severity": "medium",
+                "description": f"Perishable item near expiry ({days_until_expiry} day(s) left)",
+            })
+            risk_score += 18
+        elif (not is_perishable) and days_until_expiry <= 10:
+            risk_factors.append({
+                "factor": "non_perishable_near_expiry",
+                "severity": "low",
+                "description": f"Non-perishable item near expiry ({days_until_expiry} day(s) left)",
+            })
+            risk_score += 10
     
     # Determine overall risk level
     if risk_score >= 60:
