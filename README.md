@@ -11,6 +11,44 @@ SmartCartAI is an intelligent inventory management system that optimizes retail 
 - **Decision Orchestration**: Risk assessment, feasibility, cost-impact, explanation, and food-bank subagents coordinated by a central orchestrator with RAG over PostgreSQL
 - **Data & Scripts**: Sample CSV datasets, Python data generation (`Dataset/`), and SQL scripts for demand/pricing tuning (`database/scripts/`)
 
+## Screenshots
+
+<details>
+<summary>Mobile app UI (tap to expand)</summary>
+
+<table>
+  <tr>
+    <td><img src="Screenshot%202026-02-24%20at%2010.10.49%E2%80%AFPM.png" alt="Screenshot 1" width="260" /></td>
+    <td><img src="Screenshot%202026-02-24%20at%2010.11.00%E2%80%AFPM.png" alt="Screenshot 2" width="260" /></td>
+  </tr>
+  <tr>
+    <td><img src="Screenshot%202026-02-24%20at%2010.11.11%E2%80%AFPM.png" alt="Screenshot 3" width="260" /></td>
+    <td><img src="Screenshot%202026-02-24%20at%2010.11.19%E2%80%AFPM.png" alt="Screenshot 4" width="260" /></td>
+  </tr>
+  <tr>
+    <td><img src="Screenshot%202026-02-24%20at%2010.11.26%E2%80%AFPM.png" alt="Screenshot 5" width="260" /></td>
+    <td><img src="Screenshot%202026-02-24%20at%2010.11.33%E2%80%AFPM.png" alt="Screenshot 6" width="260" /></td>
+  </tr>
+  <tr>
+    <td><img src="Screenshot%202026-02-24%20at%2010.11.40%E2%80%AFPM.png" alt="Screenshot 7" width="260" /></td>
+    <td><img src="Screenshot%202026-02-24%20at%2010.11.58%E2%80%AFPM.png" alt="Screenshot 8" width="260" /></td>
+  </tr>
+  <tr>
+    <td><img src="Screenshot%202026-02-24%20at%2010.12.05%E2%80%AFPM.png" alt="Screenshot 9" width="260" /></td>
+    <td><img src="Screenshot%202026-02-24%20at%2010.12.15%E2%80%AFPM.png" alt="Screenshot 10" width="260" /></td>
+  </tr>
+  <tr>
+    <td><img src="Screenshot%202026-02-24%20at%2010.12.34%E2%80%AFPM.png" alt="Screenshot 11" width="260" /></td>
+    <td><img src="Screenshot%202026-02-24%20at%2010.12.42%E2%80%AFPM.png" alt="Screenshot 12" width="260" /></td>
+  </tr>
+  <tr>
+    <td><img src="Screenshot%202026-02-24%20at%2010.12.51%E2%80%AFPM.png" alt="Screenshot 13" width="260" /></td>
+    <td><img src="Screenshot%202026-02-24%20at%2010.13.00%E2%80%AFPM.png" alt="Screenshot 14" width="260" /></td>
+  </tr>
+</table>
+
+</details>
+
 ## Project Structure
 
 ```
@@ -67,22 +105,29 @@ SmartCartAI/
 ## Architecture
 
 - **UI — `SmartCartAIFrontEnd/mobile/`**  
-  React Native (Expo) app: dashboard, inventory, chatbot, suggestion log, upload/forecast. Talks to the Java backend and Chat Agent for recommendations and explanations.
+  React Native (Expo) app: dashboard, inventory, chatbot, suggestion log, upload/forecast.
 
 - **Agents — `Agents/`**  
-  - **Decision Orchestration Agent** (9000): Coordinates subagents, uses LangGraph and Mistral for prescriptive interventions and RAG over PostgreSQL.  
-  - **Chat Agent** (9006): Handles natural-language chat and waste/discount/bundle/donate suggestions; used by the mobile app and backend.  
-  - **Inventory Agent** (9005): Monitors inventory, forecasting (e.g. ETS), flags items, and can call the orchestrator.  
-  - **Subagents**: Risk (9004), Feasibility (9001), Cost Impact (9002), Explanation (9003), Food Bank (9007). Run separately for full pipeline; orchestrator has fallbacks if they are not running.
+  - **Chat Agent** (9006): User-facing entry point for natural-language chat. For DB-backed questions, it calls the Inventory Agent, then calls the Decision Orchestrator per flagged item and returns the final response (and can persist suggestions).  
+  - **Inventory Agent** (9005): Interprets user intent and queries PostgreSQL (low stock, expired, near-expiring, waste, reorder, etc.). Returns “signals” (items needing attention) and can trigger orchestration.  
+  - **Decision Orchestration Agent** (9000): Runs the decision pipeline per item and synthesizes the final recommendation (RAG over PostgreSQL + optional LLM).  
+  - **Subagents (optional, full pipeline)**: Risk (9004) → Feasibility (9001) → Cost Impact (9002) → Food Bank (9007, donate/discard) → Explanation (9003).
 
 - **Backend — `SmartCartAIBackend/`**  
-  Single Spring Boot application. REST APIs for inventory, sales, consumption, demand; proxies chat to the Chat Agent. Swagger UI at `http://localhost:8080/swagger-ui.html`.
+  Single Spring Boot application. REST APIs for inventory/sales/consumption/demand/suggestions and an agent proxy endpoint that forwards chat to the Chat Agent. Swagger UI at `http://localhost:8080/swagger-ui.html`.
 
 - **Database — `database/`**  
   PostgreSQL schema and migration/scripts. Tables: inventory, sales, consumption, demand (and related). Scripts in `database/scripts/` for demand and pricing (see `database/scripts/README.md`).
 
 - **Dataset — `Dataset/`**  
   Python script and CSV sample data for prototyping and loading into the DB.
+
+## Documentation
+
+- `START_SERVICES.md`: step-by-step startup order (agents → backend → frontend)
+- `docs/architecture.md`: end-to-end flow (Chat → Inventory → Decision Orchestrator → subagents)
+- `AGENTS_SETUP.md`: agent environment variables and setup notes
+- `Agents/RUN_AGENTS.md`: run each agent/subagent manually
 
 ## Prerequisites
 
@@ -106,15 +151,25 @@ psql -h localhost -U <user> -d smartcart_ai -f database/schema.sql
 
 Optionally load sample data from `Dataset/` (see `Dataset/Copydata.txt` or use `createdataset.py` and your import process).
 
-### 2. Frontend
+### 2. Python Agents (recommended first)
+
+**Quick start (all agents):**
 
 ```bash
-cd SmartCartAIFrontEnd/mobile
-npm install
-npm start
+./start_agents.sh
 ```
 
-Use Expo Go to open the app (scan QR or press `i`/`a` for simulator).
+**Minimum for chat/suggestions:** Decision Orchestrator (9000) + Chat Agent (9006).  
+**Optional:** Inventory Agent (9005) and the subagents (Risk/Feasibility/Cost/Explanation/Food Bank).
+
+Health checks:
+
+```bash
+curl http://localhost:9006/health
+curl http://localhost:9000/health
+```
+
+See `AGENTS_SETUP.md` and `Agents/RUN_AGENTS.md` for environment variables (use `.env` files; don’t commit real API keys/passwords).
 
 ### 3. Backend (Spring Boot)
 
@@ -123,29 +178,17 @@ cd SmartCartAIBackend
 ./mvnw spring-boot:run
 ```
 
-API: `http://localhost:8080`. Configure DB (and optional agent URLs) in `src/main/resources/application.properties`.
+API: `http://localhost:8080`. Configure DB (and agent URLs like `CHAT_AGENT_URL`) in `src/main/resources/application.properties`.
 
-### 4. Python Agents
-
-**Quick start (all agents):**
+### 4. Frontend (React Native)
 
 ```bash
-./start_agents.sh
+cd SmartCartAIFrontEnd/mobile
+npm install
+npm start
 ```
 
-**Or run manually** (see `Agents/RUN_AGENTS.md` for details):
-
-- **Required for chat/suggestions:** Decision Orchestrator (9000), Chat Agent (9006)
-- **Optional:** Inventory Agent (9005); subagents Risk (9004), Feasibility (9001), Cost Impact (9002), Explanation (9003), Food Bank (9007)
-
-Example (orchestrator + chat only):
-
-```bash
-cd Agents/decision-orchestration-agent && PORT=9000 python3 agent.py
-cd Agents/decision-orchestration-agent/subagents/chat && PORT=9006 python3 agent.py
-```
-
-Set `MISTRAL_API_KEY` (and optionally DB credentials) via `.env` in `Agents/decision-orchestration-agent/` or the project root.
+Use Expo Go to open the app (scan QR or press `i`/`a` for simulator).
 
 ### Full stack (three terminals)
 
