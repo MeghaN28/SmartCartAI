@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from flask import Flask, jsonify, request
+from fastmcp import FastMCP
 
 try:
     from dotenv import load_dotenv
@@ -29,6 +30,7 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "Welcome@123")
 PORT = int(os.getenv("PORT", "9008"))
 
 app = Flask(__name__)
+mcp = FastMCP("Dashboard Agent")
 
 
 def _to_float(value: Any) -> float:
@@ -174,12 +176,10 @@ def health():
     return jsonify({"status": "healthy", "service": "dashboard-agent", "port": PORT})
 
 
-@app.post("/item-insights")
-def item_insights():
-    body = request.get_json(silent=True) or {}
-    query = str(body.get("query") or body.get("item_name") or "").strip()
+def _build_item_insights(query: str) -> Dict[str, Any]:
+    query = str(query or "").strip()
     if not query:
-        return jsonify({"error": "query is required"}), 400
+        raise ValueError("query is required")
 
     try:
         conn = get_db_connection()
@@ -189,10 +189,7 @@ def item_insights():
         if not item:
             cur.close()
             conn.close()
-            return jsonify({
-                "error": f"No inventory item found for '{query}'",
-                "query": query,
-            }), 404
+            raise LookupError(f"No inventory item found for '{query}'")
 
         sales = _sales_series(cur, item["inventory_id"])
         demand = _demand_series(cur, item["inventory_id"])
@@ -244,10 +241,38 @@ def item_insights():
 
         cur.close()
         conn.close()
-        return jsonify(response)
+        return response
+    except (ValueError, LookupError):
+        raise
     except Exception as e:
         logger.exception("Failed to build item insights")
+        raise RuntimeError(str(e)) from e
+
+
+@app.post("/item-insights")
+def item_insights():
+    body = request.get_json(silent=True) or {}
+    query = str(body.get("query") or body.get("item_name") or "").strip()
+    try:
+        return jsonify(_build_item_insights(query))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except LookupError as e:
+        return jsonify({"error": str(e), "query": query}), 404
+    except RuntimeError as e:
         return jsonify({"error": str(e)}), 500
+
+
+@mcp.tool()
+def get_item_insights(query: str) -> Dict[str, Any]:
+    """Return dashboard item insights including stock/sales/demand metrics and chart-ready series."""
+    return _build_item_insights(query)
+
+
+@mcp.tool()
+def get_dashboard_health() -> Dict[str, Any]:
+    """Return dashboard agent health details."""
+    return {"status": "healthy", "service": "dashboard-agent", "port": PORT}
 
 
 if __name__ == "__main__":
