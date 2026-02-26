@@ -1138,7 +1138,7 @@ IMPORTANT: Output plain text only. Do not use markdown: no asterisks for bold, n
     }
 
 
-def process_chat_query(query: str, session_id: str = None) -> Dict:
+def process_chat_query(query: str, session_id: str = None, include_eval_context: bool = False) -> Dict:
     """Process a chat query: check inventory, call decision agent, store suggestions. Filter by intent."""
     query_lower = query.lower().strip()
     # Normalize common typos/spaces so we stay on DB-backed intent paths.
@@ -1566,8 +1566,91 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
     used_recommendation_pipeline = False
     nearest_food_banks_for_ui: List[Dict] = []
     nearest_food_bank_keys = set()
+    eval_contexts: List[str] = []
+    eval_context_keys = set()
     answer_parts = []
     product_name = _extract_product_name_from_query(query_lower)
+
+    def _push_eval_context(text: str):
+        if not include_eval_context:
+            return
+        cleaned = " ".join(str(text or "").split()).strip()
+        if not cleaned:
+            return
+        key = cleaned.lower()
+        if key in eval_context_keys:
+            return
+        eval_context_keys.add(key)
+        eval_contexts.append(cleaned)
+
+    def _collect_eval_context_from_recommendation(item: Dict, rec_payload: Optional[Dict]):
+        if not include_eval_context or not rec_payload:
+            return
+        rec_obj = rec_payload.get("recommendation") or {}
+        risk = rec_payload.get("risk_assessment") or {}
+        feasibility = rec_payload.get("feasibility_check") or {}
+        cost = rec_payload.get("cost_impact") or {}
+        explanation = rec_payload.get("explanation") or {}
+
+        item_name = str(item.get("item_name", "Item")).strip() or "Item"
+        item_category = str(item.get("category", "")).strip()
+        expiry_date = item.get("expiry_date")
+        base_line = f"Item: {item_name}"
+        if item_category:
+            base_line += f" (category: {item_category})"
+        if expiry_date:
+            base_line += f", expiry: {expiry_date}"
+        _push_eval_context(base_line)
+
+        action = str(rec_obj.get("action", "")).strip()
+        reasoning = str(rec_obj.get("reasoning", "")).strip()
+        expected_outcome = str(rec_obj.get("expected_outcome", "")).strip()
+        if action:
+            line = f"Recommended action: {action}"
+            if reasoning:
+                line += f". Reason: {reasoning}"
+            if expected_outcome:
+                line += f". Outcome: {expected_outcome}"
+            _push_eval_context(line)
+
+        discount_pct = rec_obj.get("suggested_discount_percent")
+        suggested_price = rec_obj.get("suggested_price")
+        if discount_pct is not None or suggested_price is not None:
+            price_line = "Pricing:"
+            if discount_pct is not None:
+                price_line += f" discount {discount_pct}%"
+            if suggested_price is not None:
+                price_line += f", suggested price {suggested_price}"
+            _push_eval_context(price_line)
+
+        if isinstance(explanation, dict):
+            explanation_text = str(explanation.get("explanation", "")).strip()
+            if explanation_text:
+                _push_eval_context(f"Explanation: {explanation_text}")
+
+        risk_level = str(risk.get("risk_level", "")).strip()
+        risk_score = risk.get("risk_score")
+        if risk_level or risk_score is not None:
+            _push_eval_context(f"Risk: level={risk_level or 'unknown'}, score={risk_score}")
+
+        is_feasible = feasibility.get("is_feasible")
+        if is_feasible is not None:
+            _push_eval_context(f"Feasibility: is_feasible={is_feasible}")
+
+        estimated_cost = cost.get("estimated_cost")
+        within_budget = cost.get("within_budget")
+        if estimated_cost is not None or within_budget is not None:
+            _push_eval_context(f"Cost impact: estimated_cost={estimated_cost}, within_budget={within_budget}")
+
+        nearest_food_banks = rec_obj.get("nearest_food_banks") or []
+        for fb in nearest_food_banks[:3]:
+            name = str(fb.get("name", "")).strip()
+            address = str(fb.get("address", "")).strip()
+            city = str(fb.get("city", "")).strip()
+            state = str(fb.get("state", "")).strip()
+            parts = [p for p in [name, address, city, state] if p]
+            if parts:
+                _push_eval_context("Nearest food bank: " + ", ".join(parts))
 
     def _collect_nearest_food_banks(rec_payload: Optional[Dict]):
         """Collect unique nearest-food-bank rows from recommendation payloads for UI map rendering."""
@@ -1771,6 +1854,7 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                     if intent == "price_increase" and rec_action != "price_increase":
                         continue
                     recommendation = rec  # full response shape: has "recommendation" key
+                    _collect_eval_context_from_recommendation(item, recommendation)
                     try:
                         suggestion_id = save_suggestion(query, item, recommendation)
                         if suggestion_id:
@@ -1839,6 +1923,7 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                         answer_parts.append(f"• {item.get('item_name', 'Item')}: Could not get recommendation — {err}")
                         continue
                     if recommendation:
+                        _collect_eval_context_from_recommendation(item, recommendation)
                         _collect_nearest_food_banks(recommendation)
                         rec_action = (recommendation.get("recommendation") or {}).get("action", "")
                         # Intent reorder: only show reorder actions (no waste suggestions)
@@ -1933,6 +2018,7 @@ IMPORTANT: Output plain text only. Do not use markdown: no asterisks for bold, n
         "suggestions": suggestions_generated,
         "nearest_food_banks": nearest_food_banks_for_ui[:5],
         "map_search_url": map_search_url,
+        "retrieved_contexts": eval_contexts if include_eval_context else [],
     }
 
 
@@ -1943,20 +2029,24 @@ def chat_endpoint():
     
     query = (payload.get("query") or payload.get("message") or "").strip()
     session_id = payload.get("session_id")
+    include_eval_context = str(payload.get("include_eval_context", "false")).strip().lower() in ("1", "true", "yes", "on")
     
     if not query:
         return jsonify({"error": "query is required", "answer": "Please type a question (e.g. 'Check inventory and suggest actions')."}), 400
     
     try:
-        result = process_chat_query(query, session_id)
-        return jsonify({
+        result = process_chat_query(query, session_id, include_eval_context=include_eval_context)
+        response = {
             "answer": result["answer"],
             "suggestions_count": result.get("suggestions_count", 0),
             "nearest_food_banks": result.get("nearest_food_banks", []),
             "map_search_url": result.get("map_search_url"),
             "session_id": session_id,
             "timestamp": datetime.now().isoformat(),
-        }), 200
+        }
+        if include_eval_context:
+            response["retrieved_contexts"] = result.get("retrieved_contexts", [])
+        return jsonify(response), 200
     except Exception as e:
         logger.error(f"Chat processing error: {e}")
         return jsonify({"error": str(e), "answer": "I'm sorry, I encountered an error processing your request."}), 500

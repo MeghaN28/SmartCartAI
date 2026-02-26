@@ -222,11 +222,10 @@ python3 /Users/meghanarendrasimha/Documents/SmartCartAI/evaluation/ragas/run_eva
   --chat-api-url http://localhost:8080/api/agents/chat \
   --run-label "agent-test-5" \
   --dataset-name "sample_inventory_eval" \
-  --metrics faithfulness \
   --debug-metrics
 ```
 
-Relevancy run (faithfulness + answer relevancy):
+Custom metrics run:
 
 ```bash
 python3 /Users/meghanarendrasimha/Documents/SmartCartAI/evaluation/ragas/run_eval.py \
@@ -234,7 +233,7 @@ python3 /Users/meghanarendrasimha/Documents/SmartCartAI/evaluation/ragas/run_eva
   --chat-api-url http://localhost:8080/api/agents/chat \
   --run-label "agent-test-6" \
   --dataset-name "sample_inventory_eval" \
-  --metrics faithfulness,answer_relevancy
+  --metrics faithfulness,response_relevancy
 ```
 
 Prereq: make sure the backend is running at `http://localhost:8080` (and the agents are up if your chat endpoint depends on them).

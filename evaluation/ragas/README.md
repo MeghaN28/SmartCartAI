@@ -20,7 +20,7 @@ pip install -r evaluation/ragas/requirements.txt
 
 Pinned evaluator profile in this repo:
 - `ragas==0.4.3`
-- default metrics: `faithfulness,response_relevancy`
+- default metrics: `faithfulness,response_relevancy,context_precision,context_recall`
 
 3. Ensure services and env:
 - Backend running on `http://localhost:8080` (default)
@@ -36,6 +36,9 @@ Per row:
 - `retrieved_context` (string or list) optional
 - `model_answer` optional (if omitted, runner calls chat API)
 
+If `retrieved_context` is omitted and `model_answer` is generated live, the runner requests
+`include_eval_context=true` from the chat endpoint and uses `retrieved_contexts` from response.
+
 Sample:
 - `evaluation/ragas/datasets/sample_inventory_eval.jsonl`
 - `evaluation/ragas/datasets/sample_inventory_eval_v2_fixed.jsonl` (fixed answers + exact evidence; best for stable CI)
@@ -50,13 +53,12 @@ python evaluation/ragas/run_eval.py \
   --dataset-name "inventory-core-v1"
 ```
 
-Note: default metric is `faithfulness` for stability across provider/model combinations.
-To opt into more metrics:
+To override default metrics:
 
 ```bash
 python evaluation/ragas/run_eval.py \
   --dataset <path>.jsonl \
-  --metrics faithfulness,answer_relevancy,context_precision,context_recall
+  --metrics faithfulness,response_relevancy,context_precision,context_recall
 ```
 
 If your dataset already includes `model_answer` and you do not want live calls:
