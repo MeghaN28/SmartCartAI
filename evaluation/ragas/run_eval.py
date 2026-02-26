@@ -17,6 +17,7 @@ import os
 import statistics
 import uuid
 import math
+import types
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -166,17 +167,41 @@ def _to_metric_instance(symbol: Any) -> Optional[Any]:
     return None
 
 
-def resolve_ragas_metrics(metric_names: List[str], debug: bool = False):
+def _metric_from_module(module_obj: Any, class_candidates: List[str]) -> Optional[Any]:
+    if not isinstance(module_obj, types.ModuleType):
+        return None
+    for cls_name in class_candidates:
+        if not hasattr(module_obj, cls_name):
+            continue
+        cls_or_obj = getattr(module_obj, cls_name)
+        metric = _to_metric_instance(cls_or_obj)
+        if metric is not None:
+            return metric
+    return None
+
+
+def resolve_ragas_metrics(metric_names: List[str], debug: bool = False) -> Tuple[List[Any], List[str]]:
     # RAGAS API differs by version; resolve by trying multiple symbol names/modules.
     metric_aliases = {
         "faithfulness": ["faithfulness", "Faithfulness"],
-        "answer_relevancy": ["answer_relevancy", "AnswerRelevancy", "ResponseRelevancy"],
+        "answer_relevancy": ["answer_relevancy", "answer_relevance", "response_relevancy", "AnswerRelevancy", "ResponseRelevancy"],
+        "response_relevancy": ["response_relevancy", "answer_relevancy", "AnswerRelevancy", "ResponseRelevancy"],
+        "context_relevance": ["context_relevance", "ContextRelevance"],
         "context_precision": ["context_precision", "ContextPrecision"],
         "context_recall": ["context_recall", "ContextRecall"],
+    }
+    module_class_hints = {
+        "faithfulness": ["Faithfulness"],
+        "answer_relevancy": ["AnswerRelevancy", "ResponseRelevancy"],
+        "response_relevancy": ["ResponseRelevancy", "AnswerRelevancy"],
+        "context_relevance": ["ContextRelevance"],
+        "context_precision": ["ContextPrecision"],
+        "context_recall": ["ContextRecall"],
     }
     candidate_modules = ["ragas.metrics.collections", "ragas.metrics"]
 
     resolved = []
+    unresolved = []
     for logical_name in metric_names:
         aliases = metric_aliases.get(logical_name, [logical_name])
         metric_obj = None
@@ -190,6 +215,8 @@ def resolve_ragas_metrics(metric_names: List[str], debug: bool = False):
                     continue
                 raw = getattr(mod, alias)
                 metric_obj = _to_metric_instance(raw)
+                if metric_obj is None:
+                    metric_obj = _metric_from_module(raw, module_class_hints.get(logical_name, []))
                 if metric_obj is not None:
                     if debug:
                         print(f"[ragas] metric '{logical_name}' resolved from {mod_name}.{alias} -> {type(metric_obj)}")
@@ -200,15 +227,30 @@ def resolve_ragas_metrics(metric_names: List[str], debug: bool = False):
             print(f"[ragas] metric '{logical_name}' could not be resolved; skipping")
         if metric_obj is not None:
             resolved.append(metric_obj)
-    return resolved
+        else:
+            unresolved.append(logical_name)
+    return resolved, unresolved
 
 
-def run_ragas(rows: List[EvalRow], metric_names: List[str], mistral_api_key: str, evaluator_model: str, debug_metrics: bool = False):
+def run_ragas(
+    rows: List[EvalRow],
+    metric_names: List[str],
+    mistral_api_key: str,
+    evaluator_model: str,
+    debug_metrics: bool = False,
+    max_workers: int = 1,
+):
     from datasets import Dataset
     from ragas import evaluate
+    from ragas.run_config import RunConfig
     from langchain_mistralai import ChatMistralAI, MistralAIEmbeddings
 
-    metrics = resolve_ragas_metrics(metric_names, debug=debug_metrics)
+    metrics, unresolved = resolve_ragas_metrics(metric_names, debug=debug_metrics)
+    if unresolved:
+        raise ValueError(
+            "Requested metrics not available in installed RAGAS version: "
+            + ", ".join(unresolved)
+        )
     if not metrics:
         raise ValueError(
             "No supported RAGAS metrics resolved for your installed version. "
@@ -232,6 +274,12 @@ def run_ragas(rows: List[EvalRow], metric_names: List[str], mistral_api_key: str
         metrics=metrics,
         llm=evaluator_llm,
         embeddings=evaluator_embeddings,
+        run_config=RunConfig(
+            timeout=180,
+            max_retries=10,
+            max_wait=60,
+            max_workers=max(1, int(max_workers)),
+        ),
         raise_exceptions=False,
     )
 
@@ -239,6 +287,15 @@ def run_ragas(rows: List[EvalRow], metric_names: List[str], mistral_api_key: str
         raise RuntimeError("Unsupported RAGAS result format: missing to_pandas().")
 
     df = result.to_pandas()
+    if debug_metrics:
+        print(f"[ragas] result columns: {list(df.columns)}")
+
+    def _pick(df_row, cols: List[str]):
+        for c in cols:
+            if c in df.columns:
+                return _safe_float(df_row[c])
+        return None
+
     row_scores: List[Dict[str, Any]] = []
     for i, r in enumerate(rows):
         rec = {
@@ -247,10 +304,10 @@ def run_ragas(rows: List[EvalRow], metric_names: List[str], mistral_api_key: str
             "expected_answer": r.expected_answer,
             "model_answer": r.model_answer,
             "retrieved_context": _join_contexts(r.contexts),
-            "faithfulness": _safe_float(df.loc[i, "faithfulness"]) if "faithfulness" in df.columns else None,
-            "answer_relevancy": _safe_float(df.loc[i, "answer_relevancy"]) if "answer_relevancy" in df.columns else None,
-            "context_precision": _safe_float(df.loc[i, "context_precision"]) if "context_precision" in df.columns else None,
-            "context_recall": _safe_float(df.loc[i, "context_recall"]) if "context_recall" in df.columns else None,
+            "faithfulness": _pick(df.loc[i], ["faithfulness"]),
+            "answer_relevancy": _pick(df.loc[i], ["answer_relevancy", "answer_relevance", "response_relevancy", "context_relevance"]),
+            "context_precision": _pick(df.loc[i], ["context_precision"]),
+            "context_recall": _pick(df.loc[i], ["context_recall"]),
             "harmfulness": _safe_float(df.loc[i, "harmfulness"]) if "harmfulness" in df.columns else None,
         }
 
@@ -386,8 +443,9 @@ def parse_args():
     p.add_argument("--dataset-name", default=None, help="Optional dataset display name.")
     p.add_argument("--model-name", default="chat-agent", help="Model/app label for storage.")
     p.add_argument("--evaluator-model", default=os.getenv("MISTRAL_MODEL", "mistral-medium"))
-    p.add_argument("--metrics", default="faithfulness")
+    p.add_argument("--metrics", default="faithfulness,response_relevancy")
     p.add_argument("--debug-metrics", action="store_true")
+    p.add_argument("--max-workers", type=int, default=1, help="RAGAS evaluator worker concurrency. Use 1 to avoid rate limits.")
     p.add_argument("--pass-threshold", type=float, default=0.70)
     p.add_argument("--max-harmfulness", type=float, default=0.20)
     p.add_argument("--git-commit", default=os.getenv("GIT_COMMIT", ""))
@@ -442,6 +500,7 @@ def main():
                 mistral_api_key=mistral_api_key,
                 evaluator_model=args.evaluator_model,
                 debug_metrics=args.debug_metrics,
+                max_workers=args.max_workers,
             )
             with conn:
                 with conn.cursor() as cur:

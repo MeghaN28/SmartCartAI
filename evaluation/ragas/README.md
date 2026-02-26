@@ -18,6 +18,10 @@ psql -h localhost -U <user> -d smartcart_ai -f database/migrations/add_ragas_eva
 pip install -r evaluation/ragas/requirements.txt
 ```
 
+Pinned evaluator profile in this repo:
+- `ragas==0.4.3`
+- default metrics: `faithfulness,response_relevancy`
+
 3. Ensure services and env:
 - Backend running on `http://localhost:8080` (default)
 - Chat agent available via backend `/api/agents/chat`
@@ -34,6 +38,7 @@ Per row:
 
 Sample:
 - `evaluation/ragas/datasets/sample_inventory_eval.jsonl`
+- `evaluation/ragas/datasets/sample_inventory_eval_v2_fixed.jsonl` (fixed answers + exact evidence; best for stable CI)
 
 ## 3) Run evaluation
 
@@ -58,9 +63,14 @@ If your dataset already includes `model_answer` and you do not want live calls:
 
 ```bash
 python evaluation/ragas/run_eval.py \
-  --dataset <path>.jsonl \
-  --skip-chat-call
+  --dataset evaluation/ragas/datasets/sample_inventory_eval_v2_fixed.jsonl \
+  --skip-chat-call \
+  --metrics faithfulness,response_relevancy \
+  --max-workers 1 \
+  --run-label "stable-fixed-set"
 ```
+
+If you hit API 429/rate-limit errors, keep `--max-workers 1`.
 
 ## 4) View results
 
