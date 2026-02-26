@@ -36,3 +36,9 @@ load_california_food_banks.sql
   - Sets one facility row in Oakland, CA (used by food-bank "nearest" calculations).
   - Truncates old `food_banks` rows and inserts California food banks/pantries with valid lat/lon.
   - Normalizes ZIP values by stripping commas/non-digits and keeping 5 digits.
+
+view_ragas_results.sql
+- Purpose: inspect stored RAGAS evaluation runs and failed test cases.
+- Usage:
+
+  psql -h <host> -U <user> -d <database> -f database/scripts/view_ragas_results.sql

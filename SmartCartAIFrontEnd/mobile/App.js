@@ -1,6 +1,7 @@
 import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
+import { UserModeProvider } from './src/contexts/UserModeContext';
 import AppNavigator from './src/navigation/AppNavigator';
 
 function AppContent() {
@@ -15,8 +16,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AppContent />
-    </ThemeProvider>
+    <UserModeProvider>
+      <ThemeProvider>
+        <AppContent />
+      </ThemeProvider>
+    </UserModeProvider>
   );
 }

@@ -212,6 +212,33 @@ See **START_SERVICES.md** for the recommended order: (1) Python agents via `./st
 - **Backend**: REST APIs for inventory/sales/consumption/demand; chat endpoint forwards to Chat Agent.
 - **Agents**: Orchestrator `/orchestrate` for prescriptive recommendations; Chat Agent `/chat` for natural-language queries and suggestions.
 
+## Evaluation (RAGAS)
+
+To test the chat pipeline with the RAGAS evaluation harness, run (see `evaluation/ragas/README.md` for details):
+
+```bash
+python3 /Users/meghanarendrasimha/Documents/SmartCartAI/evaluation/ragas/run_eval.py \
+  --dataset /Users/meghanarendrasimha/Documents/SmartCartAI/evaluation/ragas/datasets/sample_inventory_eval.jsonl \
+  --chat-api-url http://localhost:8080/api/agents/chat \
+  --run-label "agent-test-5" \
+  --dataset-name "sample_inventory_eval" \
+  --metrics faithfulness \
+  --debug-metrics
+```
+
+Relevancy run (faithfulness + answer relevancy):
+
+```bash
+python3 /Users/meghanarendrasimha/Documents/SmartCartAI/evaluation/ragas/run_eval.py \
+  --dataset /Users/meghanarendrasimha/Documents/SmartCartAI/evaluation/ragas/datasets/sample_inventory_eval.jsonl \
+  --chat-api-url http://localhost:8080/api/agents/chat \
+  --run-label "agent-test-6" \
+  --dataset-name "sample_inventory_eval" \
+  --metrics faithfulness,answer_relevancy
+```
+
+Prereq: make sure the backend is running at `http://localhost:8080` (and the agents are up if your chat endpoint depends on them).
+
 ## Data & Scripts
 
 - **Dataset**: `inventory_master_50_unique.csv`, `sales_50.csv`, `consumption_50.csv`; generate with `python createdataset.py` in `Dataset/`.

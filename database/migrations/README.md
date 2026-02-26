@@ -18,6 +18,14 @@ Adds `suggested_discount_percent` and `waste_action` to `suggestions`.
 psql -h localhost -U your_user -d smartcart_ai -f database/migrations/add_suggestion_discount_waste.sql
 ```
 
+## 3. RAGAS evaluation tables
+
+Adds tables/views to store LLM evaluation runs and per-case RAGAS metric scores.
+
+```bash
+psql -h localhost -U your_user -d smartcart_ai -f database/migrations/add_ragas_evaluation_tables.sql
+```
+
 After running (1), you can set expiry and price per item, e.g.:
 
 ```sql

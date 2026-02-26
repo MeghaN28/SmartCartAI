@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
+import { useUserMode } from '../contexts/UserModeContext';
 import { colors, radius, spacing } from '../theme';
 import Logo from '../components/Logo';
 
@@ -10,6 +11,7 @@ import HomeScreen from '../screens/HomeScreen';
 import ChatbotScreen from '../screens/ChatbotScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import SuggestionLogScreen from '../screens/SuggestionLogScreen';
+import RagasScreen from '../screens/RagasScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -20,6 +22,7 @@ function TabIcon({ name, focused, theme }) {
     Chatbot: '💬',
     Dashboard: '📊',
     SuggestionLog: '💡',
+    Ragas: '🧪',
   };
   return (
     <Text style={{ fontSize: 24, opacity: focused ? 1 : 0.55 }}>
@@ -28,21 +31,31 @@ function TabIcon({ name, focused, theme }) {
   );
 }
 
-function HeaderRight({ theme, toggleTheme }) {
+function HeaderRight({ theme, toggleTheme, mode, toggleMode }) {
   const c = colors[theme] || colors.dark;
   return (
-    <TouchableOpacity
-      onPress={toggleTheme}
-      style={[styles.themeBtn, { backgroundColor: c.card, borderColor: c.border }]}
-      activeOpacity={0.8}
-    >
-      <Text style={styles.themeEmoji}>{theme === 'dark' ? '☀️' : '🌙'}</Text>
-    </TouchableOpacity>
+    <View style={styles.headerRightWrap}>
+      <TouchableOpacity
+        onPress={toggleMode}
+        style={[styles.modeBtn, { backgroundColor: c.card, borderColor: c.border }]}
+        activeOpacity={0.8}
+      >
+        <Text style={[styles.modeText, { color: c.text }]}>{mode === 'admin' ? 'ADMIN' : 'INV'}</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={toggleTheme}
+        style={[styles.themeBtn, { backgroundColor: c.card, borderColor: c.border }]}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.themeEmoji}>{theme === 'dark' ? '☀️' : '🌙'}</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
 function TabNavigator() {
   const { theme, toggleTheme } = useTheme();
+  const { mode, toggleMode } = useUserMode();
   const c = colors[theme] || colors.dark;
 
   return (
@@ -63,7 +76,7 @@ function TabNavigator() {
         tabBarInactiveTintColor: c.tabInactive,
         tabBarLabelStyle: { fontWeight: '600', fontSize: 12 },
         tabBarItemStyle: { paddingVertical: 4 },
-        headerRight: () => <HeaderRight theme={theme} toggleTheme={toggleTheme} />,
+        headerRight: () => <HeaderRight theme={theme} toggleTheme={toggleTheme} mode={mode} toggleMode={toggleMode} />,
       }}
     >
       <Tab.Screen
@@ -98,11 +111,24 @@ function TabNavigator() {
           tabBarIcon: ({ focused }) => <TabIcon name="SuggestionLog" focused={focused} theme={theme} />,
         }}
       />
+      {mode === 'admin' ? (
+        <Tab.Screen
+          name="Ragas"
+          component={RagasScreen}
+          options={{
+            title: 'RAGAS',
+            tabBarIcon: ({ focused }) => <TabIcon name="Ragas" focused={focused} theme={theme} />,
+          }}
+        />
+      ) : null}
     </Tab.Navigator>
   );
 }
 
 const styles = StyleSheet.create({
+  headerRightWrap: { flexDirection: 'row', alignItems: 'center', marginRight: 8 },
+  modeBtn: { marginRight: 8, paddingVertical: 8, paddingHorizontal: 10, borderRadius: radius.lg, borderWidth: 1 },
+  modeText: { fontSize: 11, fontWeight: '700' },
   themeBtn: { marginRight: 14, padding: 10, borderRadius: radius.lg, borderWidth: 1 },
   themeEmoji: { fontSize: 20 },
 });
