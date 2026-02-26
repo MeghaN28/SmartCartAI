@@ -25,3 +25,14 @@ set_all_high_demand.sql
 Notes:
 - Tables `inventory` and `demand` must exist (see database/schema.sql).
 - If your DB user lacks permissions, run as superuser or admin.
+
+load_california_food_banks.sql
+- Purpose: replace `facility` and `food_banks` data with California entries from `Food_Resources_in_California_20260217.csv`.
+- Usage:
+
+  psql -h <host> -U <user> -d <database> -f database/scripts/load_california_food_banks.sql
+
+- Details:
+  - Sets one facility row in Oakland, CA (used by food-bank "nearest" calculations).
+  - Truncates old `food_banks` rows and inserts California food banks/pantries with valid lat/lon.
+  - Normalizes ZIP values by stripping commas/non-digits and keeping 5 digits.

@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 from datetime import date, datetime
+from urllib.parse import quote_plus
 
 import json
 
@@ -42,6 +43,7 @@ DB_USER = os.getenv("DB_USER", "meghanarendrasimha")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "Welcome@123")
 DECISION_ORCHESTRATOR_URL = os.getenv("DECISION_ORCHESTRATOR_URL", "http://localhost:9000")
 INVENTORY_AGENT_URL = os.getenv("INVENTORY_AGENT_URL", "http://localhost:9005")
+FOOD_BANK_AGENT_URL = os.getenv("FOOD_BANK_AGENT_URL", "http://localhost:9007")
 
 mcp = FastMCP("Chat Agent")
 app = Flask(__name__)
@@ -890,6 +892,37 @@ def _format_recommendation_line(
     return "".join(parts)
 
 
+def _build_food_bank_map_url(food_banks: List[Dict]) -> Optional[str]:
+    """Build a Google Maps search URL for nearest food banks."""
+    if not food_banks:
+        return None
+    first = food_banks[0] or {}
+    lat = first.get("lat")
+    lon = first.get("lon")
+    if lat is not None and lon is not None:
+        return f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+    city = str(first.get("city", "")).strip()
+    state = str(first.get("state", "")).strip()
+    area = ", ".join(x for x in [city, state] if x).strip()
+    query = "food banks"
+    if area:
+        query = f"{query} near {area}"
+    return f"https://www.google.com/maps/search/?api=1&query={quote_plus(query)}"
+
+
+def get_nearest_food_banks_direct(limit: int = 5) -> List[Dict]:
+    """Fetch nearest food banks directly from Food Bank subagent."""
+    try:
+        r = requests.get(f"{FOOD_BANK_AGENT_URL}/nearest", params={"limit": max(1, min(limit, 20))}, timeout=8)
+        if not r.ok:
+            return []
+        data = r.json() or {}
+        banks = data.get("nearest_food_banks") or []
+        return banks if isinstance(banks, list) else []
+    except Exception:
+        return []
+
+
 def get_proactive_alert_items() -> Dict[str, List[Dict]]:
     """Get all items that need proactive attention: waste/near expiry, out of stock, low stock, overstock."""
     near_expiry = get_near_expiry_items(within_days=14)
@@ -998,8 +1031,12 @@ def _detect_chat_intent(query_lower: str) -> str:
     """Detect primary intent so we return only relevant info. Uses shared intent_parser when available."""
     if not query_lower:
         return "general"
+    if any(w in query_lower for w in ["food bank", "foodbank", "nearest food bank", "nearest food banks"]):
+        return "food_bank"
     if any(w in query_lower for w in ["sales last week", "last week sales", "sales for", "sales related"]):
         return "sales"
+    if any(w in query_lower for w in ["food bank", "foodbank", "nearest food bank", "nearest food banks"]):
+        return "food_bank"
     # Explicit intents first: these must not be overridden by generic parser labels.
     if any(w in query_lower for w in ["non-perishable", "non perishable", "nonperishable", "non-perisbale", "non perisbale"]):
         return "non_perishable"
@@ -1084,6 +1121,37 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
     query_lower = query_lower.replace("non perisbale", "non perishable").replace("non-perisbale", "non-perishable")
     query_tokens = [t for t in query.split() if t]
     intent = _detect_chat_intent(query_lower)
+    is_food_bank_query = any(k in query_lower for k in ["food bank", "foodbank", "nearest food", "donation center"])
+
+    # Direct nearest-food-bank lookup when user asks specifically about food banks.
+    if is_food_bank_query and intent not in ("waste", "donate", "discount", "bundle", "discard", "reorder", "pricing", "price_increase"):
+        banks = get_nearest_food_banks_direct(limit=5)
+        if not banks:
+            return {
+                "answer": "I couldn't find nearby food banks right now. Please ensure the food-bank agent is running on port 9007.",
+                "suggestions_count": 0,
+                "suggestions": [],
+                "nearest_food_banks": [],
+                "map_search_url": None,
+            }
+        lines = ["Nearest food banks:"]
+        for fb in banks[:5]:
+            name = str(fb.get("name", "")).strip() or "Food bank"
+            addr = str(fb.get("address", "")).strip()
+            city = str(fb.get("city", "")).strip()
+            state = str(fb.get("state", "")).strip()
+            zip_code = str(fb.get("zip", "")).strip()
+            dist = fb.get("distance_mi")
+            loc = ", ".join(x for x in [addr, city, state, zip_code] if x)
+            suffix = f" ({dist} mi)" if dist is not None else ""
+            lines.append(f"• {name}: {loc}{suffix}")
+        return {
+            "answer": "\n".join(lines),
+            "suggestions_count": 0,
+            "suggestions": [],
+            "nearest_food_banks": banks[:5],
+            "map_search_url": _build_food_bank_map_url(banks),
+        }
 
     # Direct informational intents (DB-only, no recommendation pipeline)
     if intent == "sales":
@@ -1470,8 +1538,45 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                     items = get_items_by_name(name_part)
     
     suggestions_generated = []
+    nearest_food_banks_for_ui: List[Dict] = []
+    nearest_food_bank_keys = set()
     answer_parts = []
     product_name = _extract_product_name_from_query(query_lower)
+
+    def _collect_nearest_food_banks(rec_payload: Optional[Dict]):
+        """Collect unique nearest-food-bank rows from recommendation payloads for UI map rendering."""
+        if not rec_payload:
+            return
+        rec_obj = rec_payload.get("recommendation") or {}
+        action = str(rec_obj.get("action", "")).strip().lower()
+        # Show map cards only when the recommendation is to donate.
+        if action != "donate":
+            return
+        candidates = rec_obj.get("nearest_food_banks") or []
+        for fb in candidates:
+            name = str(fb.get("name", "")).strip()
+            addr = str(fb.get("address", "")).strip()
+            city = str(fb.get("city", "")).strip()
+            state = str(fb.get("state", "")).strip()
+            zip_code = str(fb.get("zip", "")).strip()
+            lat = fb.get("lat")
+            lon = fb.get("lon")
+            key = (name.lower(), addr.lower(), city.lower(), state.lower(), zip_code, str(lat), str(lon))
+            if key in nearest_food_bank_keys:
+                continue
+            nearest_food_bank_keys.add(key)
+            nearest_food_banks_for_ui.append({
+                "name": name,
+                "address": addr,
+                "city": city,
+                "state": state,
+                "zip": zip_code,
+                "lat": lat,
+                "lon": lon,
+                "phone": str(fb.get("phone", "")).strip(),
+                "url": str(fb.get("url", "")).strip(),
+                "distance_mi": fb.get("distance_mi"),
+            })
 
     # "forecast demand for X" / "demand for X" -> return forecast for that item only (no recommendations)
     if query_looks_like_demand_for_item and items:
@@ -1642,6 +1747,7 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                     try:
                         suggestion_id = save_suggestion(query, item, recommendation)
                         if suggestion_id:
+                            _collect_nearest_food_banks(recommendation)
                             suggestions_generated.append({
                                 "item": item["item_name"],
                                 "action": recommendation.get("recommendation", {}).get("action", "none"),
@@ -1706,6 +1812,7 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                         answer_parts.append(f"• {item.get('item_name', 'Item')}: Could not get recommendation — {err}")
                         continue
                     if recommendation:
+                        _collect_nearest_food_banks(recommendation)
                         rec_action = (recommendation.get("recommendation") or {}).get("action", "")
                         # Intent reorder: only show reorder actions (no waste suggestions)
                         if intent == "reorder" and rec_action != "reorder":
@@ -1788,10 +1895,13 @@ IMPORTANT: Output plain text only. Do not use markdown: no asterisks for bold, n
         else:
             answer_parts.append("I can help you with inventory management. Ask me to check inventory or generate suggestions for items that need attention.")
     
+    map_search_url = _build_food_bank_map_url(nearest_food_banks_for_ui)
     return {
         "answer": "\n".join(answer_parts),
         "suggestions_count": len(suggestions_generated),
-        "suggestions": suggestions_generated
+        "suggestions": suggestions_generated,
+        "nearest_food_banks": nearest_food_banks_for_ui[:5],
+        "map_search_url": map_search_url,
     }
 
 
@@ -1811,6 +1921,8 @@ def chat_endpoint():
         return jsonify({
             "answer": result["answer"],
             "suggestions_count": result.get("suggestions_count", 0),
+            "nearest_food_banks": result.get("nearest_food_banks", []),
+            "map_search_url": result.get("map_search_url"),
             "session_id": session_id,
             "timestamp": datetime.now().isoformat(),
         }), 200

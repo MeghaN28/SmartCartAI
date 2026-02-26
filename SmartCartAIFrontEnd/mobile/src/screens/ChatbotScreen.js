@@ -55,8 +55,20 @@ export default function ChatbotScreen() {
 
       const data = await res.json();
       const botMessageText = data.answer || data.error || 'No response from agent.';
+      const nearestFoodBanks = Array.isArray(data.nearest_food_banks) ? data.nearest_food_banks : [];
+      const mapSearchUrl = data.map_search_url || null;
 
-      setMessages((prev) => [...prev, { id: generateId(), text: botMessageText, sender: 'bot', timestamp: new Date() }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateId(),
+          text: botMessageText,
+          sender: 'bot',
+          timestamp: new Date(),
+          nearestFoodBanks,
+          mapSearchUrl,
+        },
+      ]);
     } catch (err) {
       setAgentError(err.message);
       const errorMessage = err.message.includes('fetch') 
