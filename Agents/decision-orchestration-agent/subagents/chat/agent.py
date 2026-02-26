@@ -812,6 +812,31 @@ def _get_inventory_summary() -> Dict:
         return {"total_items": 0, "total_stock": 0, "low_stock_count": 0}
 
 
+def _humanize_recommendation_answer(query: str, intent: str, answer_text: str) -> str:
+    """Use LLM to polish recommendation responses for readability without changing decisions."""
+    if not llm or not answer_text:
+        return answer_text
+    try:
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You rewrite inventory recommendation output for store managers.
+Goals:
+1) Keep all original recommendation facts intact (item names, action, percentages, prices, donation names, bundle pairings).
+2) Improve readability and tone: plain, human, practical.
+3) Use short sections in plain text only: Summary, Recommended actions, Why this matters.
+4) Keep concise (max ~220 words).
+5) No markdown symbols (**, #, tables). Plain text only."""),
+            ("user", "User query: {query}\nIntent: {intent}\nRaw recommendation output:\n{answer_text}\n\nRewrite now."),
+        ])
+        chain = prompt | llm
+        resp = chain.invoke({"query": query, "intent": intent, "answer_text": answer_text})
+        rewritten = resp.content if hasattr(resp, "content") else str(resp)
+        cleaned = strip_markdown(rewritten).strip()
+        return cleaned or answer_text
+    except Exception as e:
+        logger.debug(f"Recommendation humanization skipped: {e}")
+        return answer_text
+
+
 def _format_recommendation_line(
     item_name: str,
     recommendation: Dict,
@@ -1538,6 +1563,7 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
                     items = get_items_by_name(name_part)
     
     suggestions_generated = []
+    used_recommendation_pipeline = False
     nearest_food_banks_for_ui: List[Dict] = []
     nearest_food_bank_keys = set()
     answer_parts = []
@@ -1632,6 +1658,7 @@ def process_chat_query(query: str, session_id: str = None) -> Dict:
             answer_parts.append("No matching items found.")
     
     elif should_generate_suggestions and items:
+        used_recommendation_pipeline = True
         # Stock/demand summary for out_of_stock, overstock, demand, stock_status query types
         if inventory_query_type == "out_of_stock":
             answer_parts.append(f"I found {len(items)} item(s) out of stock. Consider reordering to avoid lost sales.")
@@ -1895,9 +1922,13 @@ IMPORTANT: Output plain text only. Do not use markdown: no asterisks for bold, n
         else:
             answer_parts.append("I can help you with inventory management. Ask me to check inventory or generate suggestions for items that need attention.")
     
+    final_answer = "\n".join(answer_parts)
+    if used_recommendation_pipeline:
+        final_answer = _humanize_recommendation_answer(query, intent, final_answer)
+
     map_search_url = _build_food_bank_map_url(nearest_food_banks_for_ui)
     return {
-        "answer": "\n".join(answer_parts),
+        "answer": final_answer,
         "suggestions_count": len(suggestions_generated),
         "suggestions": suggestions_generated,
         "nearest_food_banks": nearest_food_banks_for_ui[:5],
