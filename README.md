@@ -236,6 +236,18 @@ python3 /Users/meghanarendrasimha/Documents/SmartCartAI/evaluation/ragas/run_eva
   --metrics faithfulness,response_relevancy
 ```
 
+Offline / baseline run (skip live chat calls):
+
+```bash
+python3 /Users/meghanarendrasimha/Documents/SmartCartAI/evaluation/ragas/run_eval.py \
+  --dataset /Users/meghanarendrasimha/Documents/SmartCartAI/evaluation/ragas/datasets/sample_inventory_eval_v2_fixed.jsonl \
+  --skip-chat-call \
+  --metrics faithfulness,response_relevancy,context_precision,context_recall \
+  --max-workers 1 \
+  --relevancy-retry-attempts 3 \
+  --run-label "ragas-baseline-relevancy-stable-v2"
+```
+
 Prereq: make sure the backend is running at `http://localhost:8080` (and the agents are up if your chat endpoint depends on them).
 
 ## Data & Scripts
