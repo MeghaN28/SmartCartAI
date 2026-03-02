@@ -1,4 +1,4 @@
-"""Single source of demand forecasting: ETS (Holt-Winters) only.
+"""Single source of demand forecasting (default: moving average).
 
 Used by Inventory Agent and Chat Agent so the same forecast is used whenever
 demand is needed (monitoring, /query, chat-driven recommendations).
@@ -21,7 +21,8 @@ try:
 except ImportError:
     pass
 
-FORECAST_PAST_DAYS = 7
+FORECAST_PAST_DAYS = int(os.getenv("FORECAST_PAST_DAYS", "7"))
+FORECAST_MODEL = os.getenv("FORECAST_MODEL", "sma").strip().lower()  # sma | naive | ets
 ETS_ALPHA = float(os.getenv("ETS_ALPHA", "0.3"))
 ETS_BETA = float(os.getenv("ETS_BETA", "0.1"))
 ETS_GAMMA = float(os.getenv("ETS_GAMMA", "0.1"))
@@ -79,8 +80,20 @@ def _ets_forecast(
     return max(0.0, level + trend + next_seasonal)
 
 
+def _moving_average(history: List[float]) -> float:
+    if not history:
+        return 0.0
+    return sum(history) / len(history)
+
+
+def _naive_last(history: List[float]) -> float:
+    if not history:
+        return 0.0
+    return history[-1]
+
+
 def forecast_demand(consumption_history: List[dict]) -> float:
-    """Forecast demand using ETS (Holt-Winters) only.
+    """Forecast demand from recent consumption history.
 
     consumption_history: list of dicts with 'quantity_consumed' (last N days, newest first).
     Returns expected daily demand rate; next-week total = rate * 7.
@@ -92,10 +105,16 @@ def forecast_demand(consumption_history: List[dict]) -> float:
     if not consumptions:
         return 0.0
     consumptions.reverse()  # oldest first for ETS
-    return _ets_forecast(
-        consumptions,
-        alpha=ETS_ALPHA,
-        beta=ETS_BETA,
-        gamma=ETS_GAMMA,
-        period=ETS_PERIOD,
-    )
+    model = FORECAST_MODEL
+    if model == "naive":
+        return _naive_last(consumptions)
+    if model == "ets":
+        return _ets_forecast(
+            consumptions,
+            alpha=ETS_ALPHA,
+            beta=ETS_BETA,
+            gamma=ETS_GAMMA,
+            period=ETS_PERIOD,
+        )
+    # Default: simple moving average (strong baseline on our dataset)
+    return _moving_average(consumptions)

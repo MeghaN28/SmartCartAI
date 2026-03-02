@@ -168,5 +168,15 @@ def get_nearest_food_banks_tool(lat: Optional[float] = None, lon: Optional[float
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", "9007"))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    # Mode switch:
+    # - Default: Flask REST server (existing app integrations)
+    # - MCP HTTP: expose MCP tools at http://host:port/mcp (for MCP-first usage)
+    mode = os.getenv("SMARTCART_AGENT_MODE", "flask").strip().lower()
+    if mode in ("mcp", "mcp_http", "mcp-http", "http_mcp"):
+        mcp_port = int(os.getenv("MCP_PORT", "9107"))
+        host = os.getenv("MCP_HOST", "0.0.0.0")
+        logger.info("Starting Food Bank MCP server on %s:%s", host, mcp_port)
+        mcp.run(transport="http", host=host, port=mcp_port)
+    else:
+        port = int(os.getenv("PORT", "9007"))
+        app.run(host="0.0.0.0", port=port, debug=True)

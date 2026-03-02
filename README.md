@@ -170,15 +170,25 @@ Optionally load sample data from `Dataset/` (see `Dataset/Copydata.txt` or use `
 ./start_agents.sh
 ```
 
-**Minimum for chat/suggestions:** Decision Orchestrator (9000) + Chat Agent (9006).  
-**Optional:** Inventory Agent (9005), Dashboard Agent (9008), and the subagents (Risk/Feasibility+Cost/Explanation/Food Bank).
+This project runs **MCP-first**:
+- **Chat Agent (MCP)**: `http://localhost:9106/mcp`
+- **Decision Orchestrator (MCP)**: `http://localhost:9100/mcp`
 
-Health checks:
+The orchestrator still calls supporting services via Flask REST:
+- **Risk**: `http://localhost:9004/risk`
+- **Feasibility+Cost**: `http://localhost:9002/feasibility-and-cost`
+- **Explanation**: `http://localhost:9003/explain`
+- **Food bank**: `http://localhost:9007/nearest`
+- **Inventory Agent**: `http://localhost:9005/query` (DB-backed item selection for chat)
+- **Dashboard Agent**: `http://localhost:9008/item-insights`
+
+Health checks (via backend proxy; requires backend running):
 
 ```bash
-curl http://localhost:9006/health
-curl http://localhost:9000/health
-curl http://localhost:9008/health
+curl http://localhost:8080/api/agents/chat/health
+curl http://localhost:8080/api/agents/orchestrator/health
+curl http://localhost:8080/api/agents/inventory/health
+curl http://localhost:8080/api/agents/dashboard/health
 ```
 
 See `AGENTS_SETUP.md` and `Agents/RUN_AGENTS.md` for environment variables (use `.env` files; don’t commit real API keys/passwords).
@@ -187,10 +197,17 @@ See `AGENTS_SETUP.md` and `Agents/RUN_AGENTS.md` for environment variables (use 
 
 ```bash
 cd SmartCartAIBackend
+
+# MCP client settings (recommended)
+export USE_MCP_CHAT=true
+export USE_MCP_ORCHESTRATE=true
+export CHAT_AGENT_MCP_URL="http://localhost:9106/mcp"
+export DECISION_ORCHESTRATOR_MCP_URL="http://localhost:9100/mcp"
+
 ./mvnw spring-boot:run
 ```
 
-API: `http://localhost:8080`. Configure DB (and agent URLs like `CHAT_AGENT_URL`) in `src/main/resources/application.properties`.
+API: `http://localhost:8080`. Configure DB in `src/main/resources/application.properties`.
 
 ### 4. Frontend (React Native)
 
@@ -204,13 +221,41 @@ Use Expo Go to open the app (scan QR or press `i`/`a` for simulator).
 
 ### Full stack (three terminals)
 
-See **START_SERVICES.md** for the recommended order: (1) Python agents via `./start_agents.sh`, (2) Java backend via `./mvnw spring-boot:run`, (3) Frontend via `cd SmartCartAIFrontEnd/mobile && npm start`. Use `./start_all.sh --background` to start all in background; `./stop_all.sh` to stop.
+See **START_SERVICES.md** for the recommended order: (1) Python agents via `./start_agents.sh` (MCP-first), (2) Java backend via `./mvnw spring-boot:run`, (3) Frontend via `cd SmartCartAIFrontEnd/mobile && npm start`. Use `./start_all.sh --background` to start all in background; `./stop_all.sh` to stop.
 
 ## Usage
 
 - **Mobile**: Dashboard metrics, inventory list, AI chatbot, suggestion log, item forecast, upload purchase.
-- **Backend**: REST APIs for inventory/sales/consumption/demand; chat endpoint forwards to Chat Agent.
-- **Agents**: Orchestrator `/orchestrate` for prescriptive recommendations; Chat Agent `/chat` for natural-language queries and suggestions.
+- **Backend**: REST APIs for inventory/sales/consumption/demand; agent endpoints proxy to MCP servers.
+- **Agents**: Chat + Orchestrator are MCP servers; orchestrator calls subagents over Flask REST.
+
+## MCP (FastMCP)
+
+This repo runs **MCP-first**:
+- **Chat Agent + Decision Orchestrator** run as MCP HTTP servers (`/mcp`).
+- Subagents remain Flask REST services because the orchestrator calls them via HTTP POST.
+
+- **Start MCP servers (ports 9100+)**:
+
+```bash
+./start_agents.sh
+```
+
+- **Example MCP client call**:
+
+```bash
+python3 evaluation/mcp_demo.py
+```
+
+MCP endpoints (HTTP transport) are available at:
+- Orchestrator: `http://localhost:9100/mcp`
+- Chat: `http://localhost:9106/mcp`
+
+Flask subagent endpoints (called by orchestrator) are available at:
+- Risk: `http://localhost:9004/risk`
+- Feasibility+Cost: `http://localhost:9002/feasibility-and-cost`
+- Explanation: `http://localhost:9003/explain`
+- Food bank: `http://localhost:9007/nearest`
 
 ## Evaluation (RAGAS)
 

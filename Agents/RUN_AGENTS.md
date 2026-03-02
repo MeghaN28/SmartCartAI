@@ -1,35 +1,44 @@
-# How to Run the Agents (Flask)
+# How to Run the Agents (MCP-first)
 
-All agents **already run on Flask**. Restart them after code changes so the app uses the latest logic.
+Chat Agent and Decision Orchestrator run as **MCP HTTP servers**. Subagents (risk / feasibility+cost / explanation / food bank) remain **Flask REST services** because the orchestrator still calls them via HTTP POST.
 
-## 1. Decision Orchestrator (port 9000)
+Start services (MCP + required Flask subagents):
 
-Required for chat suggestions (waste rules, discount/bundle/donate).
+```bash
+./start_agents.sh
+```
+
+MCP endpoints are available at:
+- Orchestrator: `http://localhost:9100/mcp`
+- Chat: `http://localhost:9106/mcp`
+
+Flask subagent endpoints (called by orchestrator) are available at:
+- Risk: `http://localhost:9004/risk`
+- Feasibility+Cost: `http://localhost:9002/feasibility-and-cost`
+- Explanation: `http://localhost:9003/explain`
+- Food bank: `http://localhost:9007/nearest`
+
+Example MCP client call:
+
+```bash
+python3 evaluation/mcp_demo.py
+```
+
+## Manual run (optional)
+
+If you want to run services individually:
 
 ```bash
 cd Agents/decision-orchestration-agent
-python agent.py
+MCP_PORT=9100 python agent.py
 ```
-
-You should see the server start on port 9000. Leave this terminal open.
-
-## 2. Chat Agent (port 9006)
-
-This is what the mobile app and backend call for "chat". With `debug=True` and `use_reloader=True`, **edits to the Chat Agent code will reload automatically** (no need to restart unless you change the Decision Orchestrator).
 
 ```bash
 cd Agents/decision-orchestration-agent/subagents/chat
-python agent.py
+MCP_PORT=9106 python agent.py
 ```
 
-You should see:
-- `Starting Chat Agent Flask server on port 9006`
-- `Health check: http://localhost:9006/health`
-- `Chat endpoint: http://localhost:9006/chat`
-
-Leave this terminal open.
-
-## 3. Optional: Inventory Agent (port 9005)
+## Optional: Inventory Agent (port 9005)
 
 Needed if you want the Chat Agent to resolve queries via the Inventory Agent (e.g. "stock for apple" when the inventory service is up).
 
@@ -38,7 +47,7 @@ cd Agents/inventory-agent
 python agent.py
 ```
 
-## 4. Dashboard Agent (port 9008)
+## Dashboard Agent (port 9008)
 
 Needed for dashboard search popup insights (sales/demand/stock charts and recommendation).
 
@@ -47,9 +56,9 @@ cd Agents/dashboard-agent
 python agent.py
 ```
 
-## 5. Optional: Subagents (for full recommendation pipeline)
+## Subagents (required for full recommendation pipeline)
 
-For full risk/feasibility/cost/explanation, run these in separate terminals from `Agents/decision-orchestration-agent`:
+Run these in separate terminals from `Agents/decision-orchestration-agent`:
 
 ```bash
 cd Agents/decision-orchestration-agent/subagents/risk-assessment && python agent.py

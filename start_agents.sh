@@ -8,7 +8,10 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}Starting SmartCartAI Agents...${NC}"
+echo -e "${GREEN}Starting SmartCartAI Agents (MCP-first)...${NC}"
+
+# Chat + Orchestrator are MCP-only now. Use the MCP-first startup script.
+exec "$(cd "$(dirname "$0")" && pwd)/start_agents_mcp.sh"
 
 # Load env from project root or decision-orchestration-agent (API key stays out of repo)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

@@ -16,10 +16,12 @@ from common.forecasting import forecast_demand as forecast_demand_ets
 import requests
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from flask import Flask, request, jsonify
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_mistralai import ChatMistralAI
 from fastmcp import FastMCP
+import asyncio
+import threading
+from fastmcp import Client as McpClient
 
 # Load environment variables from .env file if it exists
 try:
@@ -44,9 +46,9 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "Welcome@123")
 DECISION_ORCHESTRATOR_URL = os.getenv("DECISION_ORCHESTRATOR_URL", "http://localhost:9000")
 INVENTORY_AGENT_URL = os.getenv("INVENTORY_AGENT_URL", "http://localhost:9005")
 FOOD_BANK_AGENT_URL = os.getenv("FOOD_BANK_AGENT_URL", "http://localhost:9007")
+CHAT_HUMANIZE = os.getenv("CHAT_HUMANIZE", "false").strip().lower() in ("1", "true", "yes", "y", "on")
 
 mcp = FastMCP("Chat Agent")
-app = Flask(__name__)
 
 # Initialize Mistral LLM
 llm = None
@@ -477,8 +479,12 @@ def get_items_needing_attention(query: str) -> List[Dict]:
         return []
 
 
-# Demand forecast: past 1 week → next 1 week
-FORECAST_PAST_DAYS = 7
+# Demand forecast window (default 7; can be overridden via env and shared common.forecasting)
+try:
+    from common.forecasting import FORECAST_PAST_DAYS as _FORECAST_PAST_DAYS
+except Exception:
+    _FORECAST_PAST_DAYS = 7
+FORECAST_PAST_DAYS = int(os.getenv("FORECAST_PAST_DAYS", str(_FORECAST_PAST_DAYS)))
 FORECAST_NEXT_WEEK_DAYS = 7
 
 
@@ -671,11 +677,7 @@ def call_decision_orchestrator_batch(items: List[Dict], user_asked_about_waste: 
             waste_action_preference=waste_action_preference,
         )
         try:
-            response = requests.post(f"{DECISION_ORCHESTRATOR_URL}/orchestrate", json=payload, timeout=30)
-            if not response.ok:
-                logger.warning("Orchestrate failed for item %s: %s", it.get("item_name"), response.status_code)
-                return None
-            data = response.json()
+            data = _call_orchestrator_mcp(payload)
             rec = data.get("recommendation", {})
             item_name = (payload.get("item_data") or {}).get("item_name", "Item")
             logger.info("Orchestrate item=%s recommended_action=%s", item_name, rec.get("action", ""))
@@ -710,18 +712,7 @@ def call_decision_orchestrator(item: Dict, user_asked_about_waste: bool = False,
     """Call the Decision Orchestrator Agent for an item. Pass intent so orchestrator runs only relevant subagents."""
     try:
         payload = _build_orchestrator_payload(item, user_asked_about_waste, intent=intent)
-        response = requests.post(f"{DECISION_ORCHESTRATOR_URL}/orchestrate", json=payload, timeout=15)
-        if response.ok:
-            return response.json(), None
-        err_msg = f"Recommendation service returned {response.status_code}"
-        try:
-            body = response.text[:200] if response.text else ""
-            if body:
-                err_msg += f": {body}"
-        except Exception:
-            pass
-        logger.error(f"Decision orchestrator: {err_msg}")
-        return None, err_msg
+        return _call_orchestrator_mcp(payload), None
     except requests.exceptions.ConnectionError as e:
         err_msg = "Recommendation service is not reachable. Is the Decision Orchestrator running?"
         logger.error(f"Decision orchestrator connection failed: {e}")
@@ -734,6 +725,55 @@ def call_decision_orchestrator(item: Dict, user_asked_about_waste: bool = False,
         err_msg = str(e)[:150]
         logger.error(f"Error calling decision orchestrator: {e}")
         return None, err_msg
+
+
+def _orchestrator_mcp_url() -> str:
+    # Default orchestrator MCP endpoint (MCP-only orchestrator)
+    return os.getenv("DECISION_ORCHESTRATOR_MCP_URL", "http://localhost:9100/mcp")
+
+
+def _run_coro_sync(coro):
+    """Run an async coroutine from sync code, even if we're already in an event loop.
+
+    FastMCP tool handlers may execute inside an active asyncio event loop. In that case,
+    asyncio.run() would raise: 'asyncio.run() cannot be called from a running event loop'.
+    We avoid that by running the coroutine in a dedicated thread with its own event loop.
+    """
+    try:
+        asyncio.get_running_loop()
+        in_loop = True
+    except RuntimeError:
+        in_loop = False
+
+    if not in_loop:
+        return asyncio.run(coro)
+
+    result = {"value": None, "error": None}
+
+    def _worker():
+        try:
+            result["value"] = asyncio.run(coro)
+        except Exception as e:
+            result["error"] = e
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    t.join()
+    if result["error"] is not None:
+        raise result["error"]
+    return result["value"]
+
+
+def _call_orchestrator_mcp(payload: Dict) -> Dict:
+    """Sync wrapper around FastMCP client tools/call to the orchestrator."""
+    url = _orchestrator_mcp_url()
+
+    async def _call():
+        async with McpClient(url) as c:
+            result = await c.call_tool("orchestrate", {"payload": payload})
+            return result.data
+
+    return _run_coro_sync(_call())
 
 
 def save_suggestion(user_query: str, item: Dict, recommendation: Dict) -> Optional[int]:
@@ -887,7 +927,8 @@ def _format_recommendation_line(
     if rec.get("waste_action"):
         extras.append(rec.get("waste_action"))
     nearest_fb = rec.get("nearest_food_banks") or []
-    if nearest_fb:
+    # Only show food bank locations when the recommended action is to donate.
+    if nearest_fb and action.lower() == "donate":
         # Exact donation location: name and full address (use separate list so we don't overwrite parts)
         donation_parts = []
         for fb in nearest_fb[:3]:
@@ -1426,9 +1467,11 @@ def process_chat_query(query: str, session_id: str = None, include_eval_context:
     # Use Inventory Agent's interpretation: if it said "near_expiry", treat as waste; donate/discount/bundle are waste sub-intents
     is_waste_query = (intent in ("waste", "donate", "discount", "bundle", "discard")) or waste_trigger or (inventory_query_type == "near_expiry")
     # If we have items and any has expiry within 14 days, run waste intervention (discount/bundle/donate)
-    if items and not is_waste_query:
+    # Important: never auto-flip a REORDER request into waste mode, even if some low/out-of-stock items also have near expiry.
+    # Otherwise we filter out low/out-of-stock items and return empty recommendations for reorder queries.
+    if items and not is_waste_query and intent != "reorder":
         try:
-            from datetime import date, timedelta
+            from datetime import date
             today = date.today()
             for item in items:
                 ed = item.get("expiry_date")
@@ -2008,7 +2051,8 @@ IMPORTANT: Output plain text only. Do not use markdown: no asterisks for bold, n
             answer_parts.append("I can help you with inventory management. Ask me to check inventory or generate suggestions for items that need attention.")
     
     final_answer = "\n".join(answer_parts)
-    if used_recommendation_pipeline:
+    # Humanization is optional; keep it off by default because it can change factual recommendations.
+    if used_recommendation_pipeline and CHAT_HUMANIZE:
         final_answer = _humanize_recommendation_answer(query, intent, final_answer)
 
     map_search_url = _build_food_bank_map_url(nearest_food_banks_for_ui)
@@ -2022,80 +2066,21 @@ IMPORTANT: Output plain text only. Do not use markdown: no asterisks for bold, n
     }
 
 
-@app.route("/chat", methods=["POST"])
-def chat_endpoint():
-    """Chat endpoint for conversational queries."""
-    payload = request.get_json(silent=True) or {}
-    
-    query = (payload.get("query") or payload.get("message") or "").strip()
-    session_id = payload.get("session_id")
-    include_eval_context = str(payload.get("include_eval_context", "false")).strip().lower() in ("1", "true", "yes", "on")
-    
-    if not query:
-        return jsonify({"error": "query is required", "answer": "Please type a question (e.g. 'Check inventory and suggest actions')."}), 400
-    
-    try:
-        result = process_chat_query(query, session_id, include_eval_context=include_eval_context)
-        response = {
-            "answer": result["answer"],
-            "suggestions_count": result.get("suggestions_count", 0),
-            "nearest_food_banks": result.get("nearest_food_banks", []),
-            "map_search_url": result.get("map_search_url"),
-            "session_id": session_id,
-            "timestamp": datetime.now().isoformat(),
-        }
-        if include_eval_context:
-            response["retrieved_contexts"] = result.get("retrieved_contexts", [])
-        return jsonify(response), 200
-    except Exception as e:
-        logger.error(f"Chat processing error: {e}")
-        return jsonify({"error": str(e), "answer": "I'm sorry, I encountered an error processing your request."}), 500
-
-
-@app.route("/proactive", methods=["POST", "GET"])
-def proactive_endpoint():
-    """Proactive summary: waste/near expiry, out of stock, low stock, overstock with full recommendations (hold, discount %%, bundle, discard + reason)."""
-    payload = request.get_json(silent=True) or {}
-    session_id = payload.get("session_id")
-    try:
-        result = process_proactive_summary(session_id)
-        return jsonify({
-            "answer": result["answer"],
-            "suggestions_count": result.get("suggestions_count", 0),
-            "session_id": session_id,
-            "timestamp": datetime.now().isoformat(),
-        }), 200
-    except Exception as e:
-        logger.error(f"Proactive summary error: {e}")
-        return jsonify({
-            "error": str(e),
-            "answer": "I couldn't load proactive alerts right now. Try asking 'Check inventory and suggest actions'.",
-        }), 500
-
-
-@app.route("/health", methods=["GET"])
-def health():
-    return jsonify({
-        "status": "ok",
-        "agent": "chat",
-        "mistral_configured": llm is not None,
-    }), 200
+@mcp.tool()
+def chat(query: str, session_id: str = None, include_eval_context: bool = False) -> dict:
+    """Process a chat query about inventory."""
+    return process_chat_query(query, session_id, include_eval_context=include_eval_context)
 
 
 @mcp.tool()
-def chat(query: str) -> dict:
-    """Process a chat query about inventory."""
-    result = process_chat_query(query)
-    return result
+def proactive(session_id: str = None) -> dict:
+    """Return proactive summary (same as /proactive) for MCP clients."""
+    return process_proactive_summary(session_id)
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", "9006"))
-    logger.info(f"Starting Chat Agent Flask server on port {port}")
-    logger.info(f"Health check: http://localhost:{port}/health")
-    logger.info(f"Chat endpoint: http://localhost:{port}/chat")
-    # Avoid duplicate processes binding the same port when started via nohup/scripts.
-    # Opt-in reloader for local dev only: CHAT_USE_RELOADER=true
-    use_reloader = os.getenv("CHAT_USE_RELOADER", "false").lower() in ("1", "true", "yes")
-    debug = os.getenv("CHAT_DEBUG", "false").lower() in ("1", "true", "yes")
-    app.run(host="0.0.0.0", port=port, debug=debug, threaded=True, use_reloader=use_reloader)
+    # MCP-only: expose tools at http://host:port/mcp
+    mcp_port = int(os.getenv("MCP_PORT", "9106"))
+    host = os.getenv("MCP_HOST", "0.0.0.0")
+    logger.info("Starting Chat Agent MCP server on %s:%s", host, mcp_port)
+    mcp.run(transport="http", host=host, port=mcp_port)

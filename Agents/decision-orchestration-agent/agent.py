@@ -13,7 +13,6 @@ from pathlib import Path
 import requests
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from flask import Flask, request, jsonify
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_mistralai import ChatMistralAI
 from langchain_core.output_parsers import JsonOutputParser
@@ -1645,115 +1644,20 @@ def orchestrate_intervention(inventory_id: str, event_type: str = "low_stock") -
     return final_state.get("recommendation", {})
 
 
-# -----------------------------------------------------------------------------
-# HTTP API (Flask)
-# -----------------------------------------------------------------------------
-
-app = Flask(__name__)
-
-
-def _rule_only_waste_recommendations(items: List[dict], user_asked_about_waste: bool) -> List[dict]:
-    """Return recommendations for multiple items using only rule-based logic (no subagents, no LLM). One batch = 1 food-bank call."""
-    from datetime import datetime as _dt
-    # Fetch food banks once for the whole batch
-    nearest_food_banks = []
-    if user_asked_about_waste:
-        try:
-            r = requests.post(SUBAGENT_URLS["food_bank"], json={"limit": 5}, timeout=5)
-            if r.ok and r.json():
-                nearest_food_banks = (r.json() or {}).get("nearest_food_banks", [])
-        except Exception as e:
-            logger.debug(f"Food bank fetch for batch skipped: {e}")
-    results = []
-    for it in items:
-        inv_id = it.get("inventory_id", "")
-        item_data = it.get("item_data", {}) or {}
-        db_inventory = (retrieve_historical_context(inv_id) or {}).get("inventory") or {}
-        merged_item_data = dict(item_data or {})
-        for k in ("item_name", "category", "form", "usage", "use", "item_type", "expiry_date", "selling_price", "min_stock", "max_capacity", "vendor_id"):
-            if db_inventory.get(k) is not None:
-                merged_item_data[k] = db_inventory.get(k)
-        item_name = merged_item_data.get("item_name", "Item")
-        remaining_stock = it.get("remaining_stock", 0) or 0
-        forecasted_demand = it.get("forecasted_demand") or it.get("predicted_demand") or merged_item_data.get("forecasted_demand") or merged_item_data.get("predicted_demand")
-        if forecasted_demand is None:
-            forecasted_demand = get_latest_predicted_demand(inv_id)
-        selling_price = merged_item_data.get("selling_price")
-        if selling_price is None:
-            unit_cost = get_latest_unit_cost_from_sales(inv_id)
-            if unit_cost is not None:
-                try:
-                    selling_price = _suggested_selling_price_from_cost(unit_cost)
-                except (TypeError, ValueError):
-                    pass
-        if selling_price is not None:
-            try:
-                selling_price = float(selling_price)
-            except (TypeError, ValueError):
-                selling_price = None
-        days_until_expiry = _days_until_expiry_from_item(merged_item_data, db_inventory)
-        bundle_candidates = retrieve_bundle_candidates(inv_id, merged_item_data, limit=10)
-        try:
-            similar_items = retrieve_similar_items_by_embedding(inv_id, limit=3)
-        except Exception:
-            similar_items = []
-        demand_signal = get_demand_signal(forecasted_demand)
-        high_demand_bundle_candidates = filter_high_demand_candidates(similar_items if similar_items else bundle_candidates)
-        _is_perishable = _is_item_perishable(merged_item_data)
-        preferred = (it.get("context") or {}).get("waste_action_preference")
-        _pk, reasoning, expected_outcome, overrides = pick_one_waste_suggestion(
-            {}, {"is_feasible": True}, {"within_budget": True},
-            nearest_food_banks, bundle_candidates, similar_items,
-            remaining_stock, days_until_expiry, item_name, forecasted_demand, selling_price,
-            preferred_waste_action=preferred,
-            is_perishable=_is_perishable,
-            demand_signal=demand_signal,
-            high_demand_bundle_candidates=high_demand_bundle_candidates,
-        )
-        rec = {
-            "action": _pk,
-            "priority": "Medium",
-            "reasoning": reasoning,
-            "expected_outcome": expected_outcome,
-            "suggested_discount_percent": overrides.get("suggested_discount_percent"),
-            "suggested_selling_price": overrides.get("suggested_selling_price"),
-            "bundle_suggestion": overrides.get("bundle_suggestion"),
-            "suggested_price_increase_percent": overrides.get("suggested_price_increase_percent"),
-            "nearest_food_banks": overrides.get("nearest_food_banks", []),
-            "timestamp": _dt.now().isoformat(),
-            "inventory_id": inv_id,
-        }
-        # Same shape as single /orchestrate so Chat Agent save_suggestion and _format_recommendation_line work
-        results.append({
-            "inventory_id": inv_id,
-            "item_name": item_name,
-            "recommendation": rec,
-            "risk_assessment": {},
-            "feasibility_check": {},
-            "cost_impact": {},
-            "explanation": {},
-        })
-    return results
-
-
-# Refactored: all orchestration uses single-item /orchestrate only. Chat calls /orchestrate per item.
-# @app.route("/orchestrate_batch", methods=["POST"])
-# def orchestrate_batch():
-#     """Batch orchestration: one HTTP request with many items. Runs full pipeline per item. DEPRECATED: use /orchestrate per item."""
-#     ...
-
-
-@app.route("/orchestrate", methods=["POST"])
-def orchestrate():
-    """Main orchestration endpoint (single item)."""
-    payload = request.get_json(silent=True) or {}
-    inv_id = payload.get("inventory_id", "?")
-    item_name = (payload.get("item_data") or {}).get("item_name", "?")
-    logger.info("[Orchestrator] Received request | item=%s | inventory_id=%s | event_type=%s", item_name, inv_id, payload.get("event_type", ""))
-    
-    # Backend/DB often send predicted_demand; use as fallback so discount triggers for lot high + low demand
+@mcp.tool()
+def orchestrate(payload: dict) -> dict:
+    """
+    MCP version of POST /orchestrate.
+    Accepts the same JSON payload shape as the REST endpoint and returns the same response fields.
+    """
+    payload = payload or {}
     _item = payload.get("item_data") or {}
-    _fd = payload.get("forecasted_demand") or payload.get("predicted_demand") or _item.get("forecasted_demand") or _item.get("predicted_demand")
+    _fd = (
+        payload.get("forecasted_demand")
+        or payload.get("predicted_demand")
+        or _item.get("forecasted_demand")
+        or _item.get("predicted_demand")
+    )
     initial_state: DecisionOrchestratorState = {
         "inventory_id": payload.get("inventory_id", ""),
         "event_type": payload.get("event_type", "low_stock"),
@@ -1766,38 +1670,22 @@ def orchestrate():
         "consumption_history": payload.get("consumption_history", []),
         "context": payload.get("context", {}),
     }
-    
     graph = get_orchestration_graph()
     final_state = graph.invoke(initial_state)
-    
-    rec = final_state.get("recommendation", {})
     subagents_called = _subagents_called_from_state(final_state)
-    logger.info(
-        "[Orchestrator] Pipeline complete | item=%s | inventory_id=%s | action=%s | subagents_called=%s",
-        item_name, inv_id, rec.get("action", "?"), subagents_called,
-    )
-    
-    return jsonify({
+    return {
         "recommendation": final_state.get("recommendation", {}),
         "risk_assessment": final_state.get("risk_assessment", {}),
         "feasibility_check": final_state.get("feasibility_check", {}),
         "cost_impact": final_state.get("cost_impact", {}),
         "explanation": final_state.get("explanation", {}),
         "subagents_called": subagents_called,
-    }), 200
-
-
-@app.route("/health", methods=["GET"])
-def health():
-    return jsonify({
-        "status": "ok",
-        "agent": "decision-orchestrator",
-        "mistral_configured": llm is not None,
-    }), 200
+    }
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", "9000"))
-    # Run without Flask debug/reloader in production/testing here to avoid
-    # multiple processes that can interfere with local TCP binding and tests.
-    app.run(host="0.0.0.0", port=port, debug=False)
+    # MCP-only: expose tools at http://host:port/mcp
+    mcp_port = int(os.getenv("MCP_PORT", "9100"))
+    host = os.getenv("MCP_HOST", "0.0.0.0")
+    logger.info("Starting Decision Orchestrator MCP server on %s:%s", host, mcp_port)
+    mcp.run(transport="http", host=host, port=mcp_port)

@@ -16,6 +16,7 @@ export const API = {
   suggestions: `${API_BASE}/api/suggestions`,
   ragasRuns: `${API_BASE}/api/ragas/runs`,
   ragasFailures: `${API_BASE}/api/ragas/failures?latestRunOnly=true`,
+  etsMetrics: `${API_BASE}/api/ets/metrics`,
   deleteSuggestion: (id) => `${API_BASE}/api/suggestions/${id}`,
   reorderLog: `${API_BASE}/api/reorder-log`, // Keep for backward compatibility
   purchaseUpload: `${API_BASE}/api/purchase/upload_bulk`,

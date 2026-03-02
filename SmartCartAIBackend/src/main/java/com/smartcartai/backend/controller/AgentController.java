@@ -11,6 +11,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.smartcartai.backend.mcp.McpStreamableHttpClient;
+
 @RestController
 @RequestMapping("/api/agents")
 @Tag(name = "Agents", description = "Agent orchestration endpoints")
@@ -18,6 +21,9 @@ public class AgentController {
 
     @Autowired
     private RestTemplate restTemplate;
+
+    @Autowired
+    private ObjectMapper objectMapper;
     
     // Agent URLs (can be configured via application.properties)
     private static final String INVENTORY_AGENT_URL = System.getenv().getOrDefault(
@@ -26,8 +32,20 @@ public class AgentController {
     private static final String DECISION_ORCHESTRATOR_URL = System.getenv().getOrDefault(
         "DECISION_ORCHESTRATOR_URL", "http://localhost:9000"
     );
+    private static final String DECISION_ORCHESTRATOR_MCP_URL = System.getenv().getOrDefault(
+        "DECISION_ORCHESTRATOR_MCP_URL", "http://localhost:9100/mcp"
+    );
+    private static final boolean USE_MCP_ORCHESTRATE = Boolean.parseBoolean(
+        System.getenv().getOrDefault("USE_MCP_ORCHESTRATE", "true")
+    );
     private static final String CHAT_AGENT_URL = System.getenv().getOrDefault(
         "CHAT_AGENT_URL", "http://localhost:9006"
+    );
+    private static final String CHAT_AGENT_MCP_URL = System.getenv().getOrDefault(
+        "CHAT_AGENT_MCP_URL", "http://localhost:9106/mcp"
+    );
+    private static final boolean USE_MCP_CHAT = Boolean.parseBoolean(
+        System.getenv().getOrDefault("USE_MCP_CHAT", "true")
     );
     private static final String DASHBOARD_AGENT_URL = System.getenv().getOrDefault(
         "DASHBOARD_AGENT_URL", "http://localhost:9008"
@@ -53,9 +71,17 @@ public class AgentController {
     public ResponseEntity<Map<String, Object>> orchestrateIntervention(
             @RequestBody Map<String, Object> payload) {
         try {
-            String url = DECISION_ORCHESTRATOR_URL + "/orchestrate";
-            Map<String, Object> response = restTemplate.postForObject(url, payload, Map.class);
-            return ResponseEntity.ok(response != null ? response : new HashMap<>());
+            if (USE_MCP_ORCHESTRATE) {
+                McpStreamableHttpClient mcp = McpClients.orchestrator(DECISION_ORCHESTRATOR_MCP_URL, objectMapper);
+                Map<String, Object> args = new HashMap<>();
+                args.put("payload", payload != null ? payload : new HashMap<>());
+                Map<String, Object> result = mcp.callTool("orchestrate", args);
+                return ResponseEntity.ok(result != null ? result : new HashMap<>());
+            } else {
+                String url = DECISION_ORCHESTRATOR_URL + "/orchestrate";
+                Map<String, Object> response = restTemplate.postForObject(url, payload, Map.class);
+                return ResponseEntity.ok(response != null ? response : new HashMap<>());
+            }
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();
             error.put("error", e.getMessage());
@@ -82,9 +108,19 @@ public class AgentController {
     @Operation(summary = "Check Decision Orchestrator Agent health")
     public ResponseEntity<Map<String, Object>> checkOrchestratorHealth() {
         try {
-            String url = DECISION_ORCHESTRATOR_URL + "/health";
-            Map<String, Object> response = restTemplate.getForObject(url, Map.class);
-            return ResponseEntity.ok(response != null ? response : new HashMap<>());
+            if (USE_MCP_ORCHESTRATE) {
+                McpStreamableHttpClient mcp = McpClients.orchestrator(DECISION_ORCHESTRATOR_MCP_URL, objectMapper);
+                mcp.ensureInitialized();
+                Map<String, Object> ok = new HashMap<>();
+                ok.put("status", "ok");
+                ok.put("transport", "mcp");
+                ok.put("mcp_url", DECISION_ORCHESTRATOR_MCP_URL);
+                return ResponseEntity.ok(ok);
+            } else {
+                String url = DECISION_ORCHESTRATOR_URL + "/health";
+                Map<String, Object> response = restTemplate.getForObject(url, Map.class);
+                return ResponseEntity.ok(response != null ? response : new HashMap<>());
+            }
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();
             error.put("error", e.getMessage());
@@ -125,9 +161,24 @@ public class AgentController {
     @Operation(summary = "Chat with the AI assistant about inventory")
     public ResponseEntity<Map<String, Object>> chat(@RequestBody Map<String, Object> payload) {
         try {
-            String url = CHAT_AGENT_URL + "/chat";
-            Map<String, Object> response = restTemplate.postForObject(url, payload, Map.class);
-            return ResponseEntity.ok(response != null ? response : new HashMap<>());
+            if (USE_MCP_CHAT) {
+                // MCP-first: call Chat Agent MCP tool over Streamable HTTP
+                McpStreamableHttpClient mcp = McpClients.chat(CHAT_AGENT_MCP_URL, objectMapper);
+                String query = payload.get("query") != null ? String.valueOf(payload.get("query")) : "";
+                String sessionId = payload.get("session_id") != null ? String.valueOf(payload.get("session_id")) : null;
+                boolean includeEval = payload.get("include_eval_context") != null
+                        && String.valueOf(payload.get("include_eval_context")).trim().equalsIgnoreCase("true");
+                Map<String, Object> args = new HashMap<>();
+                args.put("query", query);
+                if (sessionId != null) args.put("session_id", sessionId);
+                if (includeEval) args.put("include_eval_context", true);
+                Map<String, Object> result = mcp.callTool("chat", args);
+                return ResponseEntity.ok(result != null ? result : new HashMap<>());
+            } else {
+                String url = CHAT_AGENT_URL + "/chat";
+                Map<String, Object> response = restTemplate.postForObject(url, payload, Map.class);
+                return ResponseEntity.ok(response != null ? response : new HashMap<>());
+            }
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();
             error.put("error", e.getMessage());
@@ -140,10 +191,20 @@ public class AgentController {
     @Operation(summary = "Get proactive inventory alerts (waste, out of stock, low stock, overstock) with recommendations")
     public ResponseEntity<Map<String, Object>> proactive(@RequestBody(required = false) Map<String, Object> payload) {
         try {
-            String url = CHAT_AGENT_URL + "/proactive";
-            Map<String, Object> body = payload != null ? payload : new HashMap<>();
-            Map<String, Object> response = restTemplate.postForObject(url, body, Map.class);
-            return ResponseEntity.ok(response != null ? response : new HashMap<>());
+            if (USE_MCP_CHAT) {
+                McpStreamableHttpClient mcp = McpClients.chat(CHAT_AGENT_MCP_URL, objectMapper);
+                Map<String, Object> body = payload != null ? payload : new HashMap<>();
+                String sessionId = body.get("session_id") != null ? String.valueOf(body.get("session_id")) : null;
+                Map<String, Object> args = new HashMap<>();
+                if (sessionId != null) args.put("session_id", sessionId);
+                Map<String, Object> result = mcp.callTool("proactive", args);
+                return ResponseEntity.ok(result != null ? result : new HashMap<>());
+            } else {
+                String url = CHAT_AGENT_URL + "/proactive";
+                Map<String, Object> body = payload != null ? payload : new HashMap<>();
+                Map<String, Object> response = restTemplate.postForObject(url, body, Map.class);
+                return ResponseEntity.ok(response != null ? response : new HashMap<>());
+            }
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();
             error.put("error", e.getMessage());
@@ -156,9 +217,20 @@ public class AgentController {
     @Operation(summary = "Check Chat Agent health")
     public ResponseEntity<Map<String, Object>> checkChatAgentHealth() {
         try {
-            String url = CHAT_AGENT_URL + "/health";
-            Map<String, Object> response = restTemplate.getForObject(url, Map.class);
-            return ResponseEntity.ok(response != null ? response : new HashMap<>());
+            if (USE_MCP_CHAT) {
+                McpStreamableHttpClient mcp = McpClients.chat(CHAT_AGENT_MCP_URL, objectMapper);
+                // Health = can initialize + list tools (cheap). We'll call the chat tool with a harmless query if needed.
+                mcp.ensureInitialized();
+                Map<String, Object> ok = new HashMap<>();
+                ok.put("status", "ok");
+                ok.put("transport", "mcp");
+                ok.put("mcp_url", CHAT_AGENT_MCP_URL);
+                return ResponseEntity.ok(ok);
+            } else {
+                String url = CHAT_AGENT_URL + "/health";
+                Map<String, Object> response = restTemplate.getForObject(url, Map.class);
+                return ResponseEntity.ok(response != null ? response : new HashMap<>());
+            }
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();
             error.put("error", e.getMessage());

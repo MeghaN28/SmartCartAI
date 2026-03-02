@@ -1,7 +1,7 @@
 """Intent detection for inventory chatbot. Classifies user questions into action categories.
 
 Used by the orchestrator and chatbot to route queries and select the correct pipeline.
-Intent categories: waste, expiry, reorder, discount, bundle, donate, stock_status, forecast, recommendation.
+Intent categories: waste, expiry, reorder, discount, bundle, donate, discard, stock_status, forecast, recommendation.
 """
 import re
 from typing import Dict, Optional
@@ -13,6 +13,7 @@ INTENT_REORDER = "reorder"
 INTENT_DISCOUNT = "discount"
 INTENT_BUNDLE = "bundle"
 INTENT_DONATE = "donate"
+INTENT_DISCARD = "discard"
 INTENT_STOCK_STATUS = "stock_status"
 INTENT_FORECAST = "forecast"
 INTENT_RECOMMENDATION = "recommendation"
@@ -40,6 +41,11 @@ INTENT_KEYWORDS = [
     (INTENT_BUNDLE, [
         "bundle", "bundled", "bundling", "which items should be bundled", "can be bundled",
     ]),
+    (INTENT_DISCARD, [
+        "discard", "dispose", "throw away", "throwout", "throw out", "dump",
+        "expired", "past expiry", "past expiration", "unsafe to sell",
+        "which items to discard", "what items to discard", "items to discard",
+    ]),
     (INTENT_WASTE, [
         "waste", "going to waste", "sell soon", "expir", "expiry", "sell or donate",
         "anything to sell", "anything to donate", "whats going to waste", "reduce waste",
@@ -52,7 +58,8 @@ INTENT_KEYWORDS = [
         "pricing", "price", "increase price", "markup", "price increase",
     ]),
     (INTENT_REORDER, [
-        "low stock", "reorder", "check inventory", "out of stock", "need to order",
+        "low stock", "reorder", "re order", "re-order",
+        "check inventory", "out of stock", "need to order",
         "what to reorder", "should i reorder", "reorder milk", "running low",
     ]),
     (INTENT_RECOMMENDATION, [
@@ -73,17 +80,21 @@ def parse_intent(query: str) -> Dict[str, str]:
         return {"intent": INTENT_GENERAL, "waste_related": False}
 
     q = query.lower().strip()
+    # Normalize common spacing/hyphen variants so keyword matching is robust.
+    q = re.sub(r"\bre\s*[-\s]+\s*order\b", "reorder", q)
 
     for intent, keywords in INTENT_KEYWORDS:
         if any(kw in q for kw in keywords):
-            waste_related = intent in (INTENT_WASTE, INTENT_EXPIRY, INTENT_DONATE, INTENT_DISCOUNT, INTENT_BUNDLE)
+            waste_related = intent in (
+                INTENT_WASTE, INTENT_EXPIRY, INTENT_DONATE, INTENT_DISCOUNT, INTENT_BUNDLE, INTENT_DISCARD
+            )
             return {"intent": intent, "waste_related": waste_related}
 
     return {"intent": INTENT_GENERAL, "waste_related": False}
 
 
 def get_waste_action_preference(query: str) -> Optional[str]:
-    """If the user asks specifically for one waste action, return it: 'discount' | 'donate' | 'bundle'."""
+    """If the user asks specifically for one waste action, return it: 'discount' | 'donate' | 'bundle' | 'discard'."""
     if not query:
         return None
     q = query.lower()
@@ -93,4 +104,6 @@ def get_waste_action_preference(query: str) -> Optional[str]:
         return "discount"
     if any(w in q for w in ["bundle", "bundled", "bundling"]):
         return "bundle"
+    if any(w in q for w in ["discard", "dispose", "throw away", "expired"]):
+        return "discard"
     return None
