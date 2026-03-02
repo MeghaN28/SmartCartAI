@@ -891,28 +891,82 @@ def _format_recommendation_line(
     rec = recommendation.get("recommendation", {})
     action = rec.get("action", "none")
     priority = rec.get("priority", "Medium")
-    reasoning = rec.get("reasoning", "")
+    reasoning = rec.get("reasoning", "") or ""
+    reasoning_clean = " ".join(str(reasoning).split())
     parts = [f"• {item_name}: {action.upper()} ({priority} priority)"]
     if no_expiry_hint:
         parts.append(" No expiry date set — set expiry_date to get discount and donation suggestions.")
+
+    # Explainable "signals" (expiry/stock/demand) for inventory manager UI.
+    signal_bits: List[str] = []
+    if item:
+        # Expiry signal
+        expiry_raw = item.get("expiry_date")
+        if expiry_raw:
+            try:
+                expiry_dt = expiry_raw if isinstance(expiry_raw, date) else date.fromisoformat(str(expiry_raw)[:10])
+                days = (expiry_dt - date.today()).days
+                if days < 0:
+                    signal_bits.append(f"expired {abs(days)}d ago")
+                elif days == 0:
+                    signal_bits.append("expires today")
+                else:
+                    signal_bits.append(f"expires in {days}d")
+            except Exception:
+                pass
+        # Stock signal
+        stock = item.get("remaining_stock")
+        if stock is None:
+            stock = item.get("opening_stock")
+        min_s = item.get("min_stock")
+        try:
+            stock_val = int(stock) if stock is not None else None
+        except Exception:
+            stock_val = None
+        try:
+            min_val = int(min_s) if min_s is not None else None
+        except Exception:
+            min_val = None
+        if stock_val is not None:
+            if min_val is not None:
+                signal_bits.append(f"stock {stock_val} (min {min_val})")
+            else:
+                signal_bits.append(f"stock {stock_val}")
+        # Demand signal
+        fd = item.get("forecasted_demand")
+        if fd is not None and query_type in ("demand", "out_of_stock", "low_stock", "check", "stock_status"):
+            try:
+                next_week = round(float(fd) * 7, 1)
+                signal_bits.append(f"forecast ~{next_week}/7d")
+            except Exception:
+                pass
+
+    if signal_bits:
+        parts.append(" [Signals: " + ", ".join(signal_bits[:3]) + "]")
+
+    # Query-type badges (kept short; UI uses these as explainable cues)
     if item and query_type in ("out_of_stock", "overstock", "demand", "low_stock", "check", "stock_status"):
         stock = item.get("remaining_stock", item.get("opening_stock", 0))
         min_s = item.get("min_stock", 0)
-        if stock <= 0:
-            parts.append(" [OUT OF STOCK — suggest reorder]")
-        elif min_s and stock < min_s:
-            parts.append(" [NEAR STOCKOUT — suggest reorder]")
+        try:
+            stock_i = int(stock)
+        except Exception:
+            stock_i = stock
+        try:
+            min_i = int(min_s) if min_s is not None else 0
+        except Exception:
+            min_i = min_s
+        if isinstance(stock_i, int) and stock_i <= 0:
+            parts.append(" [OUT OF STOCK]")
+        elif isinstance(stock_i, int) and isinstance(min_i, int) and min_i and stock_i < min_i:
+            parts.append(" [NEAR STOCKOUT]")
         elif query_type == "overstock":
             parts.append(" [OVERSTOCK]")
-        else:
-            parts.append(" [In stock]")
-        fd = item.get("forecasted_demand")
-        if fd is not None and query_type in ("demand", "out_of_stock", "low_stock", "check"):
-            next_week = round(float(fd) * 7, 1)
-            parts.append(f" Demand (next 7 days): ~{next_week}")
-    if reasoning:
-        cap = 200 if action.lower() in ("donate", "bundle", "discount", "discard") else 120
-        parts.append(f" — {reasoning[:cap]}" + ("..." if len(reasoning) > cap else ""))
+
+    if reasoning_clean:
+        cap = 220 if action.lower() in ("donate", "bundle", "discount", "discard") else 160
+        parts.append(f" — Why: {reasoning_clean[:cap]}" + ("..." if len(reasoning_clean) > cap else ""))
+
     extras = []
     if rec.get("suggested_discount_percent") is not None:
         extras.append(f"Discount: {rec.get('suggested_discount_percent')}%")
@@ -946,15 +1000,18 @@ def _format_recommendation_line(
             extras.append("Donate to: " + "; ".join(donation_parts))
     if extras:
         parts.append(" | " + ", ".join(extras))
-    if include_reason and action.lower() not in ("donate", "bundle", "discount", "discard"):
-        # Don't append explanation when it's generic/error (no action, unable to generate, subagent down)
+
+    if include_reason:
+        # Add explanation agent output when it's non-generic and not duplicating reasoning.
         explanation = recommendation.get("explanation", {})
         if isinstance(explanation, dict) and explanation.get("explanation"):
-            expl = (explanation.get("explanation") or "").strip()
-            if expl and "no action" not in expl.lower() and "recommended action is to none" not in expl.lower() and "unable to generate explanation" not in expl.lower():
-                parts.append(f" Reason: {expl[:150]}" + ("..." if len(expl) > 150 else ""))
-            elif not reasoning and expl:
-                parts.append(f" Reason: {expl[:150]}" + ("..." if len(expl) > 150 else ""))
+            expl = " ".join(str(explanation.get("explanation") or "").split()).strip()
+            expl_l = expl.lower()
+            if expl and "no action" not in expl_l and "recommended action is to none" not in expl_l and "unable to generate explanation" not in expl_l:
+                # Avoid repeating the same text as reasoning.
+                if not reasoning_clean or (expl[:60].lower() not in reasoning_clean.lower()):
+                    parts.append(f" Explanation: {expl[:160]}" + ("..." if len(expl) > 160 else ""))
+
     return "".join(parts)
 
 
@@ -1050,7 +1107,13 @@ def process_proactive_summary(session_id: str = None) -> Dict:
                 item = items_by_id.get(rec.get("inventory_id"))
                 if not item:
                     continue
-                waste_lines.append(_format_recommendation_line(item.get("item_name", "Item"), rec, include_reason=True))
+                waste_lines.append(_format_recommendation_line(
+                    item.get("item_name", "Item"),
+                    rec,
+                    include_reason=True,
+                    item=item,
+                    query_type="near_expiry",
+                ))
             if waste_lines:
                 lines.append("**Waste / Near expiry (donate / discount / bundle)**")
                 lines.extend(waste_lines)
@@ -1072,7 +1135,14 @@ def process_proactive_summary(session_id: str = None) -> Dict:
                 lines.append(f"• {item.get('item_name', 'Item')}: Could not get recommendation — {err}")
                 continue
             if rec:
-                lines.append(_format_recommendation_line(item.get("item_name", "Item"), rec, include_reason=True))
+                # Pass item + query_type so each line is self-explaining (signals: stock/min/forecast/expiry).
+                lines.append(_format_recommendation_line(
+                    item.get("item_name", "Item"),
+                    rec,
+                    include_reason=True,
+                    item=item,
+                    query_type=("out_of_stock" if label == "Out of stock" else ("low_stock" if label == "Low stock" else ("overstock" if label == "Overstock" else None))),
+                ))
         lines.append("")
 
     return {
