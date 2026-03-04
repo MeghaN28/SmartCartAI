@@ -75,6 +75,7 @@ export default function RagasScreen() {
   const etsBases = ets?.baselines || null;
   const naive = etsBases?.naive || null;
   const sma = etsBases?.movingAverage || null;
+  const ema = etsBases?.ema || null;
 
   return (
     <ScrollView
@@ -102,7 +103,10 @@ export default function RagasScreen() {
       ) : null}
 
       <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
-        <Text style={[styles.cardTitle, { color: c.text }]}>ETS Forecast Evaluation</Text>
+        <Text style={[styles.cardTitle, { color: c.text }]}>Demand Forecast Evaluation</Text>
+        <Text style={[styles.line, { color: c.textSecondary, fontStyle: 'italic' }]}>
+          Primary: MAE, RMSE, WAPE. Classification (F1/confusion) is for research comparison only.
+        </Text>
         {etsError ? <Text style={[styles.msg, { color: c.danger }]}>{etsError}</Text> : null}
         {!ets && !etsError ? (
           <Text style={[styles.line, { color: c.textSecondary }]}>No ETS metrics available.</Text>
@@ -133,6 +137,15 @@ export default function RagasScreen() {
                 <Text style={[styles.line, { color: c.textSecondary }]}>F1: {fmt(sma.classification?.f1)} | Precision: {fmt(sma.classification?.precision)} | Recall: {fmt(sma.classification?.recall)} | Acc: {fmt(sma.classification?.accuracy)}</Text>
                 <Text style={[styles.line, { color: c.textSecondary }]}>MAE: {fmt2(sma.forecastError?.mae)} | RMSE: {fmt2(sma.forecastError?.rmse)}</Text>
                 <Text style={[styles.line, { color: c.textSecondary }]}>WAPE: {fmt(sma.forecastError?.wape)} | sMAPE: {fmt(sma.forecastError?.smape)}</Text>
+              </>
+            ) : null}
+
+            {ema ? (
+              <>
+                <Text style={[styles.sectionTitle, { color: c.text }]}>App default (EMA)</Text>
+                <Text style={[styles.line, { color: c.textSecondary }]}>F1: {fmt(ema.classification?.f1)} | Precision: {fmt(ema.classification?.precision)} | Recall: {fmt(ema.classification?.recall)} | Acc: {fmt(ema.classification?.accuracy)}</Text>
+                <Text style={[styles.line, { color: c.textSecondary }]}>MAE: {fmt2(ema.forecastError?.mae)} | RMSE: {fmt2(ema.forecastError?.rmse)}</Text>
+                <Text style={[styles.line, { color: c.textSecondary }]}>WAPE: {fmt(ema.forecastError?.wape)} | sMAPE: {fmt(ema.forecastError?.smape)}</Text>
               </>
             ) : null}
           </>

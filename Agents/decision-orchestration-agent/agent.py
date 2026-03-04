@@ -462,17 +462,18 @@ def _urgency_factor(expiry_days_remaining: Optional[int]) -> float:
 
 
 def _surplus_factor(remaining_stock: int, forecasted_demand_before_expiry: float) -> float:
-    """Surplus factor based on excess stock over expected demand before expiry."""
+    """Surplus factor based on excess stock over expected demand before expiry.
+
+    Uses a smooth scale (instead of hard buckets) so discount % varies per item.
+    """
     surplus = remaining_stock - forecasted_demand_before_expiry
     if surplus <= 0:
         return 0.0
-    if surplus <= 20:
-        return 2.0
-    if surplus <= 50:
-        return 5.0
-    if surplus <= 100:
-        return 8.0
-    return 12.0
+    # Normalize by expected demand before expiry. Keep a floor so low-demand items
+    # don't explode to max discount from small absolute surplus values.
+    scale = max(15.0, forecasted_demand_before_expiry * 0.75)
+    score = (surplus / scale) * 2.5
+    return min(14.0, max(0.0, round(score, 1)))
 
 
 def compute_discount_from_expiry(
@@ -484,6 +485,7 @@ def compute_discount_from_expiry(
     """
     Compute discount % and suggested price using dynamic formula:
     discount_percent = min(max_discount_limit, base_discount + urgency_factor + surplus_factor).
+    Surplus factor is smooth to avoid repeated identical percentages.
     Returns (discount_percent, suggested_price).
     """
     try:

@@ -368,15 +368,14 @@ def get_sales_last_week(item_name: str, limit: int = 20) -> List[Dict]:
         return []
 
 
-def get_demand_ranked_items(high: bool = True, limit: int = 15) -> List[Dict]:
+def get_demand_ranked_items(high: bool = True, limit: Optional[int] = None) -> List[Dict]:
     """Return items ranked by latest DB demand prediction (high or low)."""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         order = "DESC" if high else "ASC"
         demand_filter = "l.predicted_demand >= t.p70" if high else "l.predicted_demand < t.p70"
-        cur.execute(
-            f"""
+        query = f"""
             WITH latest AS (
               SELECT DISTINCT ON (d.inventory_id) d.inventory_id, d.predicted_demand
               FROM demand d
@@ -394,10 +393,12 @@ def get_demand_ranked_items(high: bool = True, limit: int = 15) -> List[Dict]:
             CROSS JOIN thr t
             WHERE t.p70 IS NOT NULL AND {demand_filter}
             ORDER BY l.predicted_demand {order}, i.item_name ASC
-            LIMIT %s
-            """,
-            (limit,),
-        )
+            """
+        params: Tuple = ()
+        if limit is not None and int(limit) > 0:
+            query += "\nLIMIT %s"
+            params = (int(limit),)
+        cur.execute(query, params)
         rows = [dict(r) for r in cur.fetchall()]
         cur.close()
         conn.close()
@@ -1330,7 +1331,7 @@ def process_chat_query(query: str, session_id: str = None, include_eval_context:
             lines.append(f"• {r.get('item_name', 'Item')} (stock: {r.get('remaining_stock', 0)}, expiry: {r.get('expiry_date') or 'N/A'})")
         return {"answer": "\n".join(lines), "suggestions_count": 0, "suggestions": []}
     if intent == "high_demand":
-        rows = get_demand_ranked_items(high=True, limit=15)
+        rows = get_demand_ranked_items(high=True)
         if not rows:
             return {"answer": "No demand prediction data found.", "suggestions_count": 0, "suggestions": []}
         lines = ["High-demand items (from latest DB predictions):"]
@@ -1383,7 +1384,7 @@ def process_chat_query(query: str, session_id: str = None, include_eval_context:
             lines.extend(info_lines)
         return {"answer": "\n".join(lines), "suggestions_count": 0, "suggestions": []}
     if intent == "low_demand":
-        rows = get_demand_ranked_items(high=False, limit=15)
+        rows = get_demand_ranked_items(high=False)
         if not rows:
             return {"answer": "No demand prediction data found.", "suggestions_count": 0, "suggestions": []}
         lines = ["Low-demand items (from latest DB predictions):"]

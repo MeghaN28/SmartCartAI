@@ -32,11 +32,11 @@ public class EtsMetricsController {
     public ResponseEntity<Map<String, Object>> getMetrics(
             @RequestParam(name = "lookbackDays", defaultValue = "60") int lookbackDays,
             @RequestParam(name = "windowDays", defaultValue = "7") int windowDays,
-            @RequestParam(name = "demandThreshold", defaultValue = "1.0") double demandThreshold
+            @RequestParam(name = "demandThreshold", defaultValue = "0.0") double demandThreshold
     ) {
         int lb = clamp(lookbackDays, 14, 365);
         int w = clamp(windowDays, 3, 30);
-        double thr = demandThreshold <= 0 ? 1.0 : demandThreshold;
+        double thr; // computed after we see actual demand distribution
 
         // ETS params should mirror Agents/common/forecasting.py defaults
         double alpha = envDouble("ETS_ALPHA", 0.3);
@@ -94,6 +94,7 @@ public class EtsMetricsController {
 
         // Build per-item daily series (oldest -> newest)
         Map<String, List<Double>> seriesByItem = new LinkedHashMap<>();
+        List<Double> allActuals = new ArrayList<>();
         for (Map<String, Object> r : rows) {
             Object invObj = r.get("inventoryId");
             if (invObj == null) continue;
@@ -101,6 +102,23 @@ public class EtsMetricsController {
             Number qtyNum = (r.get("qty") instanceof Number) ? (Number) r.get("qty") : null;
             double qty = qtyNum == null ? 0.0 : qtyNum.doubleValue();
             seriesByItem.computeIfAbsent(invId, k -> new ArrayList<>()).add(qty);
+            allActuals.add(qty);
+        }
+
+        // Derive a more meaningful classification threshold when not explicitly provided.
+        // If demandThreshold <= 0 (default), set threshold to a high-demand quantile (e.g., 75th percentile)
+        // so that positives/negatives are better balanced and confusion metrics are informative.
+        if (demandThreshold > 0.0) {
+            thr = demandThreshold;
+        } else if (!allActuals.isEmpty()) {
+            thr = percentile(allActuals, 0.75); // top 25% demand days counted as "positive"
+            if (thr <= 0.0) {
+                // Fallback: if data are mostly zeros, keep a small positive threshold.
+                thr = 1.0;
+            }
+        } else {
+            // No data; keep legacy default so API is stable.
+            thr = 1.0;
         }
 
         long tp = 0, fp = 0, tn = 0, fn = 0;
@@ -123,6 +141,10 @@ public class EtsMetricsController {
         double sumAbsSma = 0.0, sumSqSma = 0.0, sumApeSma = 0.0, sumActualAbsSma = 0.0, sumSmapeSma = 0.0;
         long mapeCountSma = 0, smapeCountSma = 0;
 
+        long tpEma = 0, fpEma = 0, tnEma = 0, fnEma = 0;
+        double sumAbsEma = 0.0, sumSqEma = 0.0, sumApeEma = 0.0, sumActualAbsEma = 0.0, sumSmapeEma = 0.0;
+        long mapeCountEma = 0, smapeCountEma = 0;
+
         for (Map.Entry<String, List<Double>> entry : seriesByItem.entrySet()) {
             List<Double> series = entry.getValue();
             if (series == null || series.size() < (w + 2)) {
@@ -135,6 +157,7 @@ public class EtsMetricsController {
                 double pred = etsForecast(history, alpha, beta, gamma, period);
                 double predNaive = safe(history.get(history.size() - 1)); // yesterday == today
                 double predSma = mean(history); // moving average over windowDays
+                double predEma = exponentialSmoothing(history, alpha); // EMA (app default)
 
                 Double actualObj = series.get(i);
                 double actual = actualObj == null ? 0.0 : actualObj.doubleValue();
@@ -201,6 +224,26 @@ public class EtsMetricsController {
                 else if (predPosS) fpSma++;
                 else if (actPos) fnSma++;
                 else tnSma++;
+
+                // EMA baseline (matches app default FORECAST_MODEL=ema)
+                double errE = predEma - actual;
+                sumAbsEma += Math.abs(errE);
+                sumSqEma += errE * errE;
+                sumActualAbsEma += Math.abs(actual);
+                if (actual > 0.0) {
+                    sumApeEma += Math.abs(errE) / actual;
+                    mapeCountEma++;
+                }
+                double denomE = Math.abs(predEma) + Math.abs(actual);
+                if (denomE > 0.0) {
+                    sumSmapeEma += (2.0 * Math.abs(errE)) / denomE;
+                    smapeCountEma++;
+                }
+                boolean predPosE = predEma >= thr;
+                if (predPosE && actPos) tpEma++;
+                else if (predPosE) fpEma++;
+                else if (actPos) fnEma++;
+                else tnEma++;
             }
         }
 
@@ -238,6 +281,18 @@ public class EtsMetricsController {
         double precisionSma = (tpSma + fpSma) > 0 ? ((double) tpSma / (double) (tpSma + fpSma)) : 0.0;
         double recallSma = (tpSma + fnSma) > 0 ? ((double) tpSma / (double) (tpSma + fnSma)) : 0.0;
         double f1Sma = (precisionSma + recallSma) > 0 ? (2.0 * precisionSma * recallSma / (precisionSma + recallSma)) : 0.0;
+
+        double maeEma = samples > 0 ? (sumAbsEma / samples) : 0.0;
+        double rmseEma = samples > 0 ? Math.sqrt(sumSqEma / samples) : 0.0;
+        double mapeEma = mapeCountEma > 0 ? (sumApeEma / mapeCountEma) : 0.0;
+        double wapeEma = sumActualAbsEma > 0 ? (sumAbsEma / sumActualAbsEma) : 0.0;
+        double smapeEma = smapeCountEma > 0 ? (sumSmapeEma / smapeCountEma) : 0.0;
+        double accuracyEma = (tpEma + tnEma + fpEma + fnEma) > 0
+                ? ((double) (tpEma + tnEma) / (double) (tpEma + tnEma + fpEma + fnEma))
+                : 0.0;
+        double precisionEma = (tpEma + fpEma) > 0 ? ((double) tpEma / (double) (tpEma + fpEma)) : 0.0;
+        double recallEma = (tpEma + fnEma) > 0 ? ((double) tpEma / (double) (tpEma + fnEma)) : 0.0;
+        double f1Ema = (precisionEma + recallEma) > 0 ? (2.0 * precisionEma * recallEma / (precisionEma + recallEma)) : 0.0;
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("generatedAt", Instant.now().toString());
@@ -304,6 +359,23 @@ public class EtsMetricsController {
                                 "wape", wapeSma,
                                 "smape", smapeSma
                         )
+                ),
+                "ema", Map.of(
+                        "description", "EMA: exponential smoothing (app default)",
+                        "classification", Map.of(
+                                "tp", tpEma, "fp", fpEma, "tn", tnEma, "fn", fnEma,
+                                "accuracy", accuracyEma,
+                                "precision", precisionEma,
+                                "recall", recallEma,
+                                "f1", f1Ema
+                        ),
+                        "forecastError", Map.of(
+                                "mae", maeEma,
+                                "rmse", rmseEma,
+                                "mape", mapeEma,
+                                "wape", wapeEma,
+                                "smape", smapeEma
+                        )
                 )
         ));
         return ResponseEntity.ok(out);
@@ -311,6 +383,28 @@ public class EtsMetricsController {
 
     private static int clamp(int v, int lo, int hi) {
         return Math.max(lo, Math.min(hi, v));
+    }
+
+    /** Approximate quantile (0.0–1.0) for a list of doubles, using linear interpolation. */
+    private static double percentile(List<Double> values, double q) {
+        if (values == null || values.isEmpty()) return 0.0;
+        double qq = Math.max(0.0, Math.min(1.0, q));
+        List<Double> sorted = new ArrayList<>(values.size());
+        for (Double v : values) {
+            sorted.add(safe(v));
+        }
+        Collections.sort(sorted);
+        int n = sorted.size();
+        if (n == 1) return sorted.get(0);
+        double pos = qq * (n - 1);
+        int idx = (int) pos;
+        double frac = pos - idx;
+        if (idx >= n - 1) {
+            return sorted.get(n - 1);
+        }
+        double lower = sorted.get(idx);
+        double upper = sorted.get(idx + 1);
+        return lower + frac * (upper - lower);
     }
 
     private static double envDouble(String key, double defaultVal) {

@@ -1,4 +1,4 @@
-"""Single source of demand forecasting (default: moving average).
+"""Single source of demand forecasting (default: exponential moving average).
 
 Used by Inventory Agent and Chat Agent so the same forecast is used whenever
 demand is needed (monitoring, /query, chat-driven recommendations).
@@ -22,7 +22,7 @@ except ImportError:
     pass
 
 FORECAST_PAST_DAYS = int(os.getenv("FORECAST_PAST_DAYS", "7"))
-FORECAST_MODEL = os.getenv("FORECAST_MODEL", "sma").strip().lower()  # sma | naive | ets
+FORECAST_MODEL = os.getenv("FORECAST_MODEL", "ema").strip().lower()  # ema | sma | naive | ets
 ETS_ALPHA = float(os.getenv("ETS_ALPHA", "0.3"))
 ETS_BETA = float(os.getenv("ETS_BETA", "0.1"))
 ETS_GAMMA = float(os.getenv("ETS_GAMMA", "0.1"))
@@ -116,5 +116,7 @@ def forecast_demand(consumption_history: List[dict]) -> float:
             gamma=ETS_GAMMA,
             period=ETS_PERIOD,
         )
-    # Default: simple moving average (strong baseline on our dataset)
+    if model == "ema":
+        return _exponential_smoothing(consumptions, alpha=ETS_ALPHA)
+    # sma or any other: simple moving average
     return _moving_average(consumptions)
