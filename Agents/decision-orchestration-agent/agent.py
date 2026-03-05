@@ -342,9 +342,26 @@ def _suggested_selling_price_from_cost(unit_cost: float, margin_percent: Optiona
 
 
 def _reorder_price_increase_suggestion(
-    item_data: dict, historical_context: Optional[Dict] = None
+    item_data: dict,
+    historical_context: Optional[Dict] = None,
+    remaining_stock: Optional[int] = None,
+    days_until_expiry: Optional[int] = None,
 ) -> tuple:
-    """Return (suggested_price_increase_percent, suggested_selling_price) for reorder. Uses 1-2% increase when selling_price is available."""
+    """Return (suggested_price_increase_percent, suggested_selling_price) for reorder.
+
+    Guardrails:
+    - no price increase when stock is zero/out-of-stock
+    - no price increase for near-expiry items
+    """
+    try:
+        rs = int(remaining_stock) if remaining_stock is not None else 0
+    except (TypeError, ValueError):
+        rs = 0
+    if rs <= 0:
+        return (None, None)
+    if days_until_expiry is not None and days_until_expiry <= NEAR_EXPIRY_DAYS:
+        return (None, None)
+
     selling_price = (item_data or {}).get("selling_price") or (
         ((historical_context or {}).get("inventory") or {}).get("selling_price")
     )
@@ -1215,7 +1232,12 @@ Provide a structured recommendation as JSON with:
             if suggested_action == "reorder" or action == "reorder":
                 expiry_str = f" by {expiry_date}" if expiry_date else ""
                 reasoning = f"Reorder{expiry_str} to maintain stock; prioritize by expiry date."
-                price_inc_pct, increased_price = _reorder_price_increase_suggestion(merged_item_data, historical_context)
+                price_inc_pct, increased_price = _reorder_price_increase_suggestion(
+                    merged_item_data,
+                    historical_context,
+                    remaining_stock=state.get("remaining_stock"),
+                    days_until_expiry=days_until_expiry,
+                )
                 if price_inc_pct is not None:
                     reasoning += f" Consider a {price_inc_pct:.0f}% price increase to capture margin while restocking."
                 expected_outcome = "Stock levels will be maintained and waste minimized."
@@ -1330,7 +1352,12 @@ Provide a structured recommendation as JSON with:
             if suggested_action == "reorder":
                 expiry_str = f" by {expiry_date}" if expiry_date else ""
                 reasoning = f"Reorder{expiry_str} to maintain stock; prioritize by expiry date."
-                price_inc_pct, increased_price = _reorder_price_increase_suggestion(merged_item_data, None)
+                price_inc_pct, increased_price = _reorder_price_increase_suggestion(
+                    merged_item_data,
+                    None,
+                    remaining_stock=state.get("remaining_stock"),
+                    days_until_expiry=days_until_expiry,
+                )
                 if price_inc_pct is not None:
                     reasoning += f" Consider a {price_inc_pct:.0f}% price increase to capture margin while restocking."
                 recommendation = {
@@ -1423,7 +1450,12 @@ Provide a structured recommendation as JSON with:
         if suggested_action == "reorder":
             expiry_str = f" by {expiry_date}" if expiry_date else ""
             reasoning = f"Reorder{expiry_str} to maintain stock; prioritize by expiry date."
-            price_inc_pct, increased_price = _reorder_price_increase_suggestion(state.get("item_data", {}), None)
+            price_inc_pct, increased_price = _reorder_price_increase_suggestion(
+                state.get("item_data", {}),
+                None,
+                remaining_stock=state.get("remaining_stock"),
+                days_until_expiry=days_until_expiry,
+            )
             if price_inc_pct is not None:
                 reasoning += f" Consider a {price_inc_pct:.0f}% price increase to capture margin while restocking."
             recommendation = {

@@ -878,6 +878,32 @@ Goals:
         return answer_text
 
 
+def _humanize_chat_answer(query: str, intent: str, answer_text: str) -> str:
+    """Make any chat answer more readable while preserving factual content."""
+    if not llm or not answer_text:
+        return answer_text
+    try:
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """Rewrite the assistant answer for a store manager so it is easy to read.
+Rules:
+1) Keep all facts exactly the same (item names, actions, quantities, percentages, prices, dates, food-bank names).
+2) Do not invent or remove facts.
+3) Use plain text only (no markdown symbols, no tables).
+4) Keep concise and practical.
+5) If there are multiple items, keep one item per line using a simple bullet like "- ".
+6) If the answer is already clear, return it with only light cleanup."""),
+            ("user", "User query: {query}\nIntent: {intent}\nAnswer:\n{answer_text}\n\nRewrite now."),
+        ])
+        chain = prompt | llm
+        resp = chain.invoke({"query": query, "intent": intent, "answer_text": answer_text})
+        rewritten = resp.content if hasattr(resp, "content") else str(resp)
+        cleaned = strip_markdown(rewritten).strip()
+        return cleaned or answer_text
+    except Exception as e:
+        logger.debug(f"General answer humanization skipped: {e}")
+        return answer_text
+
+
 def _format_recommendation_line(
     item_name: str,
     recommendation: Dict,
@@ -1168,6 +1194,8 @@ def _detect_chat_intent(query_lower: str) -> str:
     """Detect primary intent so we return only relevant info. Uses shared intent_parser when available."""
     if not query_lower:
         return "general"
+    high_demand_phrases = ("high demand", "high-demand", "high on demand", "in high demand")
+    low_demand_phrases = ("low demand", "low-demand", "low on demand", "in low demand")
     if any(w in query_lower for w in ["food bank", "foodbank", "nearest food bank", "nearest food banks"]):
         return "food_bank"
     if any(w in query_lower for w in ["sales last week", "last week sales", "sales for", "sales related"]):
@@ -1179,9 +1207,9 @@ def _detect_chat_intent(query_lower: str) -> str:
         return "non_perishable"
     if ("perishable" in query_lower or "persihable" in query_lower) and any(w in query_lower for w in ["inventory", "my", "in my"]):
         return "perishable"
-    if "high demand" in query_lower and any(w in query_lower for w in ["inventory", "my", "in my"]):
+    if any(p in query_lower for p in high_demand_phrases) and any(w in query_lower for w in ["inventory", "my", "in my"]):
         return "high_demand"
-    if "low demand" in query_lower and any(w in query_lower for w in ["inventory", "my", "in my"]):
+    if any(p in query_lower for p in low_demand_phrases) and any(w in query_lower for w in ["inventory", "my", "in my"]):
         return "low_demand"
     if any(w in query_lower for w in ["items need price increase", "what items need price increase", "which items need price increase"]):
         return "price_increase"
@@ -1207,6 +1235,10 @@ def _detect_chat_intent(query_lower: str) -> str:
         return "sales"
     if any(w in query_lower for w in ["non-perishable", "non perishable", "nonperishable", "non-perisbale", "non perisbale"]):
         return "non_perishable"
+    if any(p in query_lower for p in high_demand_phrases):
+        return "high_demand"
+    if any(p in query_lower for p in low_demand_phrases):
+        return "low_demand"
     if any(w in query_lower for w in ["price increase", "increase price", "items need price increase"]):
         return "price_increase"
     if any(w in query_lower for w in ["stock for", "stock of", "tell me stock", "what is the stock", "how much", "how many", "current stock", "stock level"]):
@@ -1260,17 +1292,30 @@ def process_chat_query(query: str, session_id: str = None, include_eval_context:
     intent = _detect_chat_intent(query_lower)
     is_food_bank_query = any(k in query_lower for k in ["food bank", "foodbank", "nearest food", "donation center"])
 
+    def _build_response(
+        answer: str,
+        suggestions_count: int = 0,
+        suggestions: Optional[List[Dict]] = None,
+        nearest_food_banks: Optional[List[Dict]] = None,
+        map_search_url: Optional[str] = None,
+        retrieved_contexts: Optional[List[str]] = None,
+    ) -> Dict:
+        cleaned = strip_markdown(answer or "").strip()
+        humanized = _humanize_chat_answer(query, intent, cleaned)
+        return {
+            "answer": humanized,
+            "suggestions_count": suggestions_count,
+            "suggestions": suggestions or [],
+            "nearest_food_banks": nearest_food_banks or [],
+            "map_search_url": map_search_url,
+            "retrieved_contexts": retrieved_contexts or [],
+        }
+
     # Direct nearest-food-bank lookup when user asks specifically about food banks.
     if is_food_bank_query and intent not in ("waste", "donate", "discount", "bundle", "discard", "reorder", "pricing", "price_increase"):
         banks = get_nearest_food_banks_direct(limit=5)
         if not banks:
-            return {
-                "answer": "I couldn't find nearby food banks right now. Please ensure the food-bank agent is running on port 9007.",
-                "suggestions_count": 0,
-                "suggestions": [],
-                "nearest_food_banks": [],
-                "map_search_url": None,
-            }
+            return _build_response("I couldn't find nearby food banks right now. Please ensure the food-bank agent is running on port 9007.")
         lines = ["Nearest food banks:"]
         for fb in banks[:5]:
             name = str(fb.get("name", "")).strip() or "Food bank"
@@ -1282,13 +1327,11 @@ def process_chat_query(query: str, session_id: str = None, include_eval_context:
             loc = ", ".join(x for x in [addr, city, state, zip_code] if x)
             suffix = f" ({dist} mi)" if dist is not None else ""
             lines.append(f"• {name}: {loc}{suffix}")
-        return {
-            "answer": "\n".join(lines),
-            "suggestions_count": 0,
-            "suggestions": [],
-            "nearest_food_banks": banks[:5],
-            "map_search_url": _build_food_bank_map_url(banks),
-        }
+        return _build_response(
+            "\n".join(lines),
+            nearest_food_banks=banks[:5],
+            map_search_url=_build_food_bank_map_url(banks),
+        )
 
     # Direct informational intents (DB-only, no recommendation pipeline)
     if intent == "sales":
@@ -1299,11 +1342,7 @@ def process_chat_query(query: str, session_id: str = None, include_eval_context:
                 item_name = query_lower.split(" for ", 1)[-1].strip("?.!, ")
         rows = get_sales_last_week(item_name, limit=20) if item_name else []
         if not rows:
-            return {
-                "answer": "No sales records found in table `sales` for the last 7 days for the requested item.",
-                "suggestions_count": 0,
-                "suggestions": [],
-            }
+            return _build_response("No sales records found in table sales for the last 7 days for the requested item.")
         lines = [f"Sales last 7 days for '{item_name}' (from sales table):"]
         for r in rows:
             lines.append(
@@ -1312,28 +1351,28 @@ def process_chat_query(query: str, session_id: str = None, include_eval_context:
                 f"avg unit_cost {float(r.get('avg_unit_cost') or 0):.2f}, "
                 f"total_cost {float(r.get('total_cost') or 0):.2f}"
             )
-        return {"answer": "\n".join(lines), "suggestions_count": 0, "suggestions": []}
+        return _build_response("\n".join(lines))
 
     if intent == "perishable":
         rows = get_perishable_items(limit=50)
         if not rows:
-            return {"answer": "No perishable items found in inventory.", "suggestions_count": 0, "suggestions": []}
+            return _build_response("No perishable items found in inventory.")
         lines = ["Perishable items in your inventory:"]
         for r in rows:
             lines.append(f"• {r.get('item_name', 'Item')} (stock: {r.get('remaining_stock', 0)}, expiry: {r.get('expiry_date') or 'N/A'})")
-        return {"answer": "\n".join(lines), "suggestions_count": 0, "suggestions": []}
+        return _build_response("\n".join(lines))
     if intent == "non_perishable":
         rows = get_non_perishable_items(limit=50)
         if not rows:
-            return {"answer": "No non-perishable items found in inventory.", "suggestions_count": 0, "suggestions": []}
+            return _build_response("No non-perishable items found in inventory.")
         lines = ["Non-perishable items in your inventory:"]
         for r in rows:
             lines.append(f"• {r.get('item_name', 'Item')} (stock: {r.get('remaining_stock', 0)}, expiry: {r.get('expiry_date') or 'N/A'})")
-        return {"answer": "\n".join(lines), "suggestions_count": 0, "suggestions": []}
+        return _build_response("\n".join(lines))
     if intent == "high_demand":
         rows = get_demand_ranked_items(high=True)
         if not rows:
-            return {"answer": "No demand prediction data found.", "suggestions_count": 0, "suggestions": []}
+            return _build_response("No demand prediction data found.")
         lines = ["High-demand items (from latest DB predictions):"]
         action_lines = []
         info_lines = []
@@ -1382,15 +1421,15 @@ def process_chat_query(query: str, session_id: str = None, include_eval_context:
         if info_lines:
             lines.append("Other high-demand items:")
             lines.extend(info_lines)
-        return {"answer": "\n".join(lines), "suggestions_count": 0, "suggestions": []}
+        return _build_response("\n".join(lines))
     if intent == "low_demand":
         rows = get_demand_ranked_items(high=False)
         if not rows:
-            return {"answer": "No demand prediction data found.", "suggestions_count": 0, "suggestions": []}
+            return _build_response("No demand prediction data found.")
         lines = ["Low-demand items (from latest DB predictions):"]
         for r in rows:
             lines.append(f"• {r.get('item_name', 'Item')}: {r.get('forecasted_demand', 0)} units/day")
-        return {"answer": "\n".join(lines), "suggestions_count": 0, "suggestions": []}
+        return _build_response("\n".join(lines))
 
     def _is_low_or_out_stock(it: Dict) -> bool:
         """Low/out-of-stock items should only appear in reorder suggestions."""
@@ -1815,7 +1854,7 @@ def process_chat_query(query: str, session_id: str = None, include_eval_context:
                 continue
             answer_parts.append(f"{name}: forecasted demand {forecasted_demand:.1f} units/day (next 7 days)")
         if answer_parts:
-            return {"answer": "\n".join(answer_parts), "suggestions_count": 0, "suggestions": []}
+            return _build_response("\n".join(answer_parts))
 
     # Simple stock lookup: "stock for apple", "tell me the stock for apple" — return stock info only, no recommendations
     query_looks_like_stock_question = any(phrase in query_lower for phrase in [
@@ -2091,7 +2130,7 @@ def process_chat_query(query: str, session_id: str = None, include_eval_context:
         # Regular Q&A mode. Avoid LLM hallucinations for inventory-like queries.
         if _query_looks_like_inventory(query_lower):
             answer_parts.append("I couldn't find matching DB records for that inventory query. Please try with an exact item name from your inventory.")
-            return {"answer": "\n".join(answer_parts), "suggestions_count": 0, "suggestions": []}
+            return _build_response("\n".join(answer_parts))
         # Non-inventory general Q&A
         if llm:
             try:
@@ -2121,20 +2160,17 @@ IMPORTANT: Output plain text only. Do not use markdown: no asterisks for bold, n
         else:
             answer_parts.append("I can help you with inventory management. Ask me to check inventory or generate suggestions for items that need attention.")
     
-    final_answer = "\n".join(answer_parts)
-    # Humanization is optional; keep it off by default because it can change factual recommendations.
-    if used_recommendation_pipeline and CHAT_HUMANIZE:
-        final_answer = _humanize_recommendation_answer(query, intent, final_answer)
+    final_answer = _humanize_chat_answer(query, intent, "\n".join(answer_parts))
 
     map_search_url = _build_food_bank_map_url(nearest_food_banks_for_ui)
-    return {
-        "answer": final_answer,
-        "suggestions_count": len(suggestions_generated),
-        "suggestions": suggestions_generated,
-        "nearest_food_banks": nearest_food_banks_for_ui[:5],
-        "map_search_url": map_search_url,
-        "retrieved_contexts": eval_contexts if include_eval_context else [],
-    }
+    return _build_response(
+        final_answer,
+        suggestions_count=len(suggestions_generated),
+        suggestions=suggestions_generated,
+        nearest_food_banks=nearest_food_banks_for_ui[:5],
+        map_search_url=map_search_url,
+        retrieved_contexts=eval_contexts if include_eval_context else [],
+    )
 
 
 @mcp.tool()
