@@ -920,9 +920,15 @@ def _format_recommendation_line(
     priority = rec.get("priority", "Medium")
     reasoning = rec.get("reasoning", "") or ""
     reasoning_clean = " ".join(str(reasoning).split())
-    parts = [f"• {item_name}: {action.upper()} ({priority} priority)"]
+    p_norm = str(priority or "").strip().lower()
+    p_badge = "🟡"
+    if p_norm == "high":
+        p_badge = "🔴"
+    elif p_norm == "low":
+        p_badge = "🟢"
+    parts = [f"{p_badge} {item_name} | Action: {action.upper()} | Priority: {str(priority).upper()}"]
     if no_expiry_hint:
-        parts.append(" No expiry date set — set expiry_date to get discount and donation suggestions.")
+        parts.append("\n   Note: No expiry date set. Add expiry_date to unlock discount/donation suggestions.")
 
     # Explainable "signals" (expiry/stock/demand) for inventory manager UI.
     signal_bits: List[str] = []
@@ -969,7 +975,7 @@ def _format_recommendation_line(
                 pass
 
     if signal_bits:
-        parts.append(" [Signals: " + ", ".join(signal_bits[:3]) + "]")
+        parts.append("\n   Signals: " + ", ".join(signal_bits[:3]))
 
     # Query-type badges (kept short; UI uses these as explainable cues)
     if item and query_type in ("out_of_stock", "overstock", "demand", "low_stock", "check", "stock_status"):
@@ -984,15 +990,15 @@ def _format_recommendation_line(
         except Exception:
             min_i = min_s
         if isinstance(stock_i, int) and stock_i <= 0:
-            parts.append(" [OUT OF STOCK]")
+            parts.append("\n   Stock status: 🔴 OUT OF STOCK")
         elif isinstance(stock_i, int) and isinstance(min_i, int) and min_i and stock_i < min_i:
-            parts.append(" [NEAR STOCKOUT]")
+            parts.append("\n   Stock status: 🟠 NEAR STOCKOUT")
         elif query_type == "overstock":
-            parts.append(" [OVERSTOCK]")
+            parts.append("\n   Stock status: 🟣 OVERSTOCK")
 
     if reasoning_clean:
         cap = 220 if action.lower() in ("donate", "bundle", "discount", "discard") else 160
-        parts.append(f" — Why: {reasoning_clean[:cap]}" + ("..." if len(reasoning_clean) > cap else ""))
+        parts.append(f"\n   Why: {reasoning_clean[:cap]}" + ("..." if len(reasoning_clean) > cap else ""))
 
     extras = []
     if rec.get("suggested_discount_percent") is not None:
@@ -1026,7 +1032,7 @@ def _format_recommendation_line(
         if donation_parts:
             extras.append("Donate to: " + "; ".join(donation_parts))
     if extras:
-        parts.append(" | " + ", ".join(extras))
+        parts.append("\n   Commercial: " + ", ".join(extras))
 
     if include_reason:
         # Add explanation agent output when it's non-generic and not duplicating reasoning.
@@ -1037,7 +1043,7 @@ def _format_recommendation_line(
             if expl and "no action" not in expl_l and "recommended action is to none" not in expl_l and "unable to generate explanation" not in expl_l:
                 # Avoid repeating the same text as reasoning.
                 if not reasoning_clean or (expl[:60].lower() not in reasoning_clean.lower()):
-                    parts.append(f" Explanation: {expl[:160]}" + ("..." if len(expl) > 160 else ""))
+                    parts.append(f"\n   Explanation: {expl[:160]}" + ("..." if len(expl) > 160 else ""))
 
     return "".join(parts)
 
@@ -1884,7 +1890,20 @@ def process_chat_query(query: str, session_id: str = None, include_eval_context:
                 stock = "?"
             min_s = item.get("min_stock")
             max_cap = item.get("max_capacity")
-            parts = [f"{name}: {stock} in stock"]
+            status = "🟢 STABLE"
+            try:
+                stock_i = int(stock) if stock is not None and stock != "?" else None
+            except Exception:
+                stock_i = None
+            try:
+                min_i = int(min_s) if min_s is not None else None
+            except Exception:
+                min_i = None
+            if isinstance(stock_i, int) and stock_i <= 0:
+                status = "🔴 OUT OF STOCK"
+            elif isinstance(stock_i, int) and isinstance(min_i, int) and min_i > 0 and stock_i <= min_i:
+                status = "🟠 LOW STOCK"
+            parts = [f"{name} | Stock: {stock} | Status: {status}"]
             if min_s is not None:
                 parts.append(f"min {min_s}")
             if max_cap is not None:
