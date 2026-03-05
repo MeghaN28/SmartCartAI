@@ -37,6 +37,81 @@ export const API = {
   },
 };
 
+const AUTH = {
+  username: process.env.EXPO_PUBLIC_APP_AUTH_USERNAME || 'admin',
+  password: process.env.EXPO_PUBLIC_APP_AUTH_PASSWORD || 'change-me',
+};
+
+let _accessToken = null;
+let _refreshPromise = null;
+let _installed = false;
+let _rawFetch = null;
+
+function _isApiUrl(url) {
+  try {
+    const s = String(url || '');
+    return s.startsWith(`${API.base}/api/`) || s.includes('/api/');
+  } catch {
+    return false;
+  }
+}
+
+function _isAuthEndpoint(url) {
+  return String(url || '').includes('/api/auth/token');
+}
+
+async function _fetchToken() {
+  const res = await _rawFetch(`${API.base}/api/auth/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: AUTH.username, password: AUTH.password }),
+  });
+  if (!res.ok) {
+    const msg = await res.text().catch(() => '');
+    throw new Error(`Auth token request failed (${res.status}): ${msg}`);
+  }
+  const data = await res.json();
+  const token = data?.access_token;
+  if (!token) throw new Error('No access_token returned from /api/auth/token');
+  _accessToken = token;
+  return token;
+}
+
+async function _getToken() {
+  if (_accessToken) return _accessToken;
+  if (_refreshPromise) return _refreshPromise;
+  _refreshPromise = _fetchToken().finally(() => {
+    _refreshPromise = null;
+  });
+  return _refreshPromise;
+}
+
+async function _authFetch(input, init = {}) {
+  const url = typeof input === 'string' ? input : input?.url;
+  if (!_isApiUrl(url) || _isAuthEndpoint(url)) {
+    return _rawFetch(input, init);
+  }
+
+  const token = await _getToken();
+  const headers = { ...(init.headers || {}), Authorization: `Bearer ${token}` };
+  let res = await _rawFetch(input, { ...init, headers });
+
+  if (res.status === 401) {
+    _accessToken = null;
+    const retryToken = await _getToken();
+    const retryHeaders = { ...(init.headers || {}), Authorization: `Bearer ${retryToken}` };
+    res = await _rawFetch(input, { ...init, headers: retryHeaders });
+  }
+  return res;
+}
+
+export function installGlobalAuthFetch() {
+  if (_installed) return;
+  _rawFetch = global.fetch.bind(global);
+  global.fetch = _authFetch;
+  _installed = true;
+}
+
 // Placeholder for future iGentic agent integration. Set when ready to use.
 export const IGENTIC = {
   endpointBase: '',

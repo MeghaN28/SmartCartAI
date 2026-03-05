@@ -37,6 +37,7 @@ done
 mkdir -p logs
 
 export MCP_HOST="${MCP_HOST:-0.0.0.0}"
+export AGENT_SHARED_TOKEN="${AGENT_SHARED_TOKEN:-smartcart-local-agent-token}"
 
 echo -e "${YELLOW}Starting Flask subagents (required by orchestrator)...${NC}"
 
@@ -94,4 +95,3 @@ echo "  - Inventory:     http://localhost:9005/query"
 echo "  - Dashboard:     http://localhost:9008/item-insights"
 echo ""
 echo "Logs: logs/*.log"
-

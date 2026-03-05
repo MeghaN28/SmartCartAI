@@ -32,6 +32,17 @@ echo ""
 
 if [ "$1" == "--background" ]; then
     echo -e "${GREEN}Starting all services in background...${NC}"
+    # Load optional root env for security/runtime config
+    if [ -f ".env" ]; then
+        set -a
+        source ".env"
+        set +a
+    fi
+    export JWT_ENFORCE="${JWT_ENFORCE:-true}"
+    export JWT_SECRET="${JWT_SECRET:-smartcart-local-jwt-secret-change-me-32chars}"
+    export APP_AUTH_USERNAME="${APP_AUTH_USERNAME:-admin}"
+    export APP_AUTH_PASSWORD="${APP_AUTH_PASSWORD:-change-me}"
+    export AGENT_SHARED_TOKEN="${AGENT_SHARED_TOKEN:-smartcart-local-agent-token}"
     
     # Start Python agents
     echo -e "${YELLOW}Starting Python agents...${NC}"

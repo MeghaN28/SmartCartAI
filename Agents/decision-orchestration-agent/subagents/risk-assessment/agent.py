@@ -28,9 +28,24 @@ DB_PORT = os.getenv("DB_PORT", "5432")
 DB_NAME = os.getenv("DB_NAME", "smartcart_ai")
 DB_USER = os.getenv("DB_USER", "meghanarendrasimha")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "Welcome@123")
+AGENT_SHARED_TOKEN = os.getenv("AGENT_SHARED_TOKEN", "")
 
 mcp = FastMCP("Risk Assessment Subagent")
 app = Flask(__name__)
+
+
+@app.before_request
+def _check_agent_token():
+    if request.path == "/health":
+        return None
+    if not AGENT_SHARED_TOKEN:
+        return None
+    if request.method == "OPTIONS":
+        return None
+    incoming = request.headers.get("X-Agent-Token", "")
+    if incoming != AGENT_SHARED_TOKEN:
+        return jsonify({"error": "Unauthorized"}), 401
+    return None
 
 
 def get_db_connection():

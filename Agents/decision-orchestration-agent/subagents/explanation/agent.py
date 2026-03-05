@@ -38,9 +38,24 @@ def strip_markdown(text: str) -> str:
 # Configuration
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-medium")
+AGENT_SHARED_TOKEN = os.getenv("AGENT_SHARED_TOKEN", "")
 
 mcp = FastMCP("Explanation Subagent")
 app = Flask(__name__)
+
+
+@app.before_request
+def _check_agent_token():
+    if request.path == "/health":
+        return None
+    if not AGENT_SHARED_TOKEN:
+        return None
+    if request.method == "OPTIONS":
+        return None
+    incoming = request.headers.get("X-Agent-Token", "")
+    if incoming != AGENT_SHARED_TOKEN:
+        return jsonify({"error": "Unauthorized"}), 401
+    return None
 
 # Initialize Mistral LLM
 llm = None

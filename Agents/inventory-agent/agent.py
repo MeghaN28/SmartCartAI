@@ -43,6 +43,7 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "Welcome@123")
 MONITORING_INTERVAL = int(os.getenv("MONITORING_INTERVAL", "30"))  # seconds
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-small-latest")
+AGENT_SHARED_TOKEN = os.getenv("AGENT_SHARED_TOKEN", "")
 
 # Optional LLM for query intent (understand any phrasing; fallback to keyword logic if unavailable)
 _llm = None
@@ -62,6 +63,13 @@ from common.forecasting import forecast_demand as forecast_demand_ets, FORECAST_
 
 # MCP Server
 mcp = FastMCP("Inventory Monitoring Agent")
+
+
+def _agent_headers() -> Dict[str, str]:
+    headers = {}
+    if AGENT_SHARED_TOKEN:
+        headers["X-Agent-Token"] = AGENT_SHARED_TOKEN
+    return headers
 
 
 # -----------------------------------------------------------------------------
@@ -896,7 +904,7 @@ def notify_decision_agent(state: InventoryAgentState) -> dict:
         "timestamp": datetime.now().isoformat(),
     }
     try:
-        r = requests.post(DECISION_AGENT_URL, json=payload, timeout=10)
+        r = requests.post(DECISION_AGENT_URL, json=payload, headers=_agent_headers(), timeout=10)
         decision_agent_response = r.json() if r.ok else {"status_code": r.status_code, "text": r.text}
     except Exception as e:
         logger.exception("Failed to notify decision agent")
@@ -1085,6 +1093,20 @@ def signal_inventory_item(inventory_id: str, event_type: str = "low_stock") -> d
 # -----------------------------------------------------------------------------
 
 app = Flask(__name__)
+
+
+@app.before_request
+def _check_agent_token():
+    if request.path == "/health":
+        return None
+    if not AGENT_SHARED_TOKEN:
+        return None
+    if request.method == "OPTIONS":
+        return None
+    incoming = request.headers.get("X-Agent-Token", "")
+    if incoming != AGENT_SHARED_TOKEN:
+        return jsonify({"error": "Unauthorized"}), 401
+    return None
 
 
 @app.route("/query", methods=["POST"])

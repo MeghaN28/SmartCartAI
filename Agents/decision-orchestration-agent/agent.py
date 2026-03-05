@@ -39,6 +39,7 @@ DB_PORT = os.getenv("DB_PORT", "5432")
 DB_NAME = os.getenv("DB_NAME", "smartcart_ai")
 DB_USER = os.getenv("DB_USER", "meghanarendrasimha")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "Welcome@123")
+AGENT_SHARED_TOKEN = os.getenv("AGENT_SHARED_TOKEN", "")
 
 # Subagent URLs (feasibility + cost merged into single agent at 9002)
 SUBAGENT_URLS = {
@@ -50,6 +51,13 @@ SUBAGENT_URLS = {
     "explanation": os.getenv("EXPLANATION_AGENT_URL", "http://localhost:9003/explain"),
     "food_bank": os.getenv("FOOD_BANK_AGENT_URL", "http://localhost:9007/nearest"),
 }
+
+
+def _agent_headers() -> Dict[str, str]:
+    headers = {}
+    if AGENT_SHARED_TOKEN:
+        headers["X-Agent-Token"] = AGENT_SHARED_TOKEN
+    return headers
 
 # MCP Server
 mcp = FastMCP("Decision Orchestrator Agent")
@@ -833,7 +841,7 @@ def assess_risk(state: DecisionOrchestratorState) -> dict:
     }
     
     try:
-        r = requests.post(SUBAGENT_URLS["risk"], json=payload, timeout=5)
+        r = requests.post(SUBAGENT_URLS["risk"], json=payload, headers=_agent_headers(), timeout=5)
         risk_assessment = r.json() if r.ok else {"error": f"HTTP {r.status_code}"}
         status = "ok" if not risk_assessment.get("error") else "error"
         logger.info("[Subagent] Risk Assessment completed | item=%s | status=%s", item_name, status)
@@ -867,7 +875,7 @@ def check_feasibility_and_cost(state: DecisionOrchestratorState) -> dict:
         "context": context,
     }
     try:
-        r = requests.post(SUBAGENT_URLS["feasibility_and_cost"], json=payload, timeout=8)
+        r = requests.post(SUBAGENT_URLS["feasibility_and_cost"], json=payload, headers=_agent_headers(), timeout=8)
         if not r.ok:
             feasibility_check = {"error": f"HTTP {r.status_code}", "is_feasible": False, "constraints": []}
             cost_impact = {"error": f"HTTP {r.status_code}", "estimated_cost": 0, "within_budget": True}
@@ -1024,7 +1032,7 @@ def get_donation_options(state: DecisionOrchestratorState) -> dict:
     item_name = (state.get("item_data") or {}).get("item_name", "?")
     logger.info("[Subagent] Calling Food Bank | item=%s | inventory_id=%s", item_name, inv_id)
     try:
-        r = requests.post(SUBAGENT_URLS["food_bank"], json={"limit": 5}, timeout=5)
+        r = requests.post(SUBAGENT_URLS["food_bank"], json={"limit": 5}, headers=_agent_headers(), timeout=5)
         if r.ok:
             data = r.json()
             banks = data.get("nearest_food_banks", [])
@@ -1065,7 +1073,7 @@ def generate_explanation(state: DecisionOrchestratorState) -> dict:
     }
     
     try:
-        r = requests.post(SUBAGENT_URLS["explanation"], json=payload, timeout=10)
+        r = requests.post(SUBAGENT_URLS["explanation"], json=payload, headers=_agent_headers(), timeout=10)
         explanation = r.json() if r.ok else {"error": f"HTTP {r.status_code}"}
         status = "ok" if not explanation.get("error") else "error"
         logger.info("[Subagent] Explanation completed | item=%s | status=%s", item_name, status)

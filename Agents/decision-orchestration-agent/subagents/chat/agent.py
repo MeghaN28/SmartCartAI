@@ -47,6 +47,7 @@ DECISION_ORCHESTRATOR_URL = os.getenv("DECISION_ORCHESTRATOR_URL", "http://local
 INVENTORY_AGENT_URL = os.getenv("INVENTORY_AGENT_URL", "http://localhost:9005")
 FOOD_BANK_AGENT_URL = os.getenv("FOOD_BANK_AGENT_URL", "http://localhost:9007")
 CHAT_HUMANIZE = os.getenv("CHAT_HUMANIZE", "false").strip().lower() in ("1", "true", "yes", "y", "on")
+AGENT_SHARED_TOKEN = os.getenv("AGENT_SHARED_TOKEN", "")
 
 mcp = FastMCP("Chat Agent")
 
@@ -151,9 +152,11 @@ def call_inventory_agent_query(query: str) -> Tuple[List[Dict], Optional[str], O
     query_type is e.g. "near_expiry", "low_stock", "check" so Chat can show the right empty message.
     """
     try:
+        headers = {"X-Agent-Token": AGENT_SHARED_TOKEN} if AGENT_SHARED_TOKEN else None
         response = requests.post(
             f"{INVENTORY_AGENT_URL}/query",
             json={"query": query},
+            headers=headers,
             timeout=10,
         )
         if not response.ok:
@@ -1069,7 +1072,13 @@ def _build_food_bank_map_url(food_banks: List[Dict]) -> Optional[str]:
 def get_nearest_food_banks_direct(limit: int = 5) -> List[Dict]:
     """Fetch nearest food banks directly from Food Bank subagent."""
     try:
-        r = requests.get(f"{FOOD_BANK_AGENT_URL}/nearest", params={"limit": max(1, min(limit, 20))}, timeout=8)
+        headers = {"X-Agent-Token": AGENT_SHARED_TOKEN} if AGENT_SHARED_TOKEN else None
+        r = requests.get(
+            f"{FOOD_BANK_AGENT_URL}/nearest",
+            params={"limit": max(1, min(limit, 20))},
+            headers=headers,
+            timeout=8,
+        )
         if not r.ok:
             return []
         data = r.json() or {}

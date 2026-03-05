@@ -36,6 +36,40 @@ java -jar target/SmartCartAIBackend-1.0.0.jar
 
 (If you have Maven installed, you can use `mvn` instead of `./mvnw`.)
 
+## Phase 1 Security (JWT + Rate Limit + Agent Token)
+
+Set these environment variables before starting backend:
+
+```bash
+export JWT_ENFORCE=true
+export JWT_SECRET="replace-with-strong-secret-at-least-32-chars"
+export JWT_EXP_MINUTES=120
+export APP_AUTH_USERNAME=admin
+export APP_AUTH_PASSWORD="replace-this-password"
+export RATE_LIMIT_MAX_REQUESTS=120
+export RATE_LIMIT_WINDOW_SECONDS=60
+export AGENT_SHARED_TOKEN="replace-with-strong-internal-token"
+```
+
+Get a JWT:
+
+```bash
+curl -X POST http://localhost:8080/api/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"replace-this-password"}'
+```
+
+Use token:
+
+```bash
+curl http://localhost:8080/api/inventory \
+  -H "Authorization: Bearer <access_token>"
+```
+
+Notes:
+- If `JWT_ENFORCE=false` (default), JWT validation is not enforced.
+- Python agents enforce `X-Agent-Token` when `AGENT_SHARED_TOKEN` is set.
+
 ## API Endpoints
 
 | Method | Path | Description |
