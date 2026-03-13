@@ -13,6 +13,7 @@ import json
 # Single source of demand forecast: ETS only (same as Inventory Agent)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
 from common.forecasting import forecast_demand as forecast_demand_ets
+from common.expiry import days_until_expiry as days_until_expiry_fn
 import requests
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -940,8 +941,9 @@ def _format_recommendation_line(
         expiry_raw = item.get("expiry_date")
         if expiry_raw:
             try:
-                expiry_dt = expiry_raw if isinstance(expiry_raw, date) else date.fromisoformat(str(expiry_raw)[:10])
-                days = (expiry_dt - date.today()).days
+                days = days_until_expiry_fn(expiry_raw)
+                if days is None:
+                    continue
                 if days < 0:
                     signal_bits.append(f"expired {abs(days)}d ago")
                 elif days == 0:
@@ -1468,14 +1470,10 @@ def process_chat_query(query: str, session_id: str = None, include_eval_context:
 
     def _days_until_expiry(it: Dict) -> Optional[int]:
         """Return days until expiry for an item, if available."""
-        expiry_raw = it.get("expiry_date")
+        expiry_raw = it.get("expiry_date") or it.get("expiryDate")
         if not expiry_raw:
             return None
-        try:
-            expiry_dt = expiry_raw if isinstance(expiry_raw, date) else date.fromisoformat(str(expiry_raw)[:10])
-            return (expiry_dt - date.today()).days
-        except Exception:
-            return None
+        return days_until_expiry_fn(expiry_raw)
 
     def _bundle_near_miss_reason(item: Dict, rec_action: str, rec_reasoning: str) -> str:
         """Explain why an item missed the bundle rule."""
@@ -1596,15 +1594,12 @@ def process_chat_query(query: str, session_id: str = None, include_eval_context:
     # Otherwise we filter out low/out-of-stock items and return empty recommendations for reorder queries.
     if items and not is_waste_query and intent != "reorder":
         try:
-            from datetime import date
-            today = date.today()
             for item in items:
-                ed = item.get("expiry_date")
-                if ed is not None:
-                    d = ed if isinstance(ed, date) else date.fromisoformat(str(ed)[:10])
-                    if 0 <= (d - today).days <= 14:
-                        is_waste_query = True
-                        break
+                ed = item.get("expiry_date") or item.get("expiryDate")
+                days = days_until_expiry_fn(ed)
+                if days is not None and 0 <= days <= 14:
+                    is_waste_query = True
+                    break
         except Exception:
             pass
     if inv_err and (should_generate_suggestions or waste_trigger):

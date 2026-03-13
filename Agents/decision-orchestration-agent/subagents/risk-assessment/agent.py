@@ -2,13 +2,14 @@
 import os
 import logging
 from typing import Dict, List
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from flask import Flask, request, jsonify
 from fastmcp import FastMCP
+from common.expiry import days_until_expiry as days_until_expiry_fn
 
 # Load environment variables from .env file if it exists
 try:
@@ -76,16 +77,6 @@ def assess_risk(inventory_id: str, item_data: Dict, remaining_stock: int,
         category = str(data.get("category", "")).strip().lower()
         return "perishable" in category
 
-    def _days_until_expiry(data: Dict):
-        raw = data.get("expiry_date") or data.get("expiryDate")
-        if not raw:
-            return None
-        try:
-            expiry_dt = raw if isinstance(raw, date) else date.fromisoformat(str(raw)[:10])
-            return (expiry_dt - date.today()).days
-        except Exception:
-            return None
-    
     # Risk 1: Stock level below minimum
     min_stock = item_data.get("min_stock", 10)
     if remaining_stock < min_stock:
@@ -142,7 +133,8 @@ def assess_risk(inventory_id: str, item_data: Dict, remaining_stock: int,
 
     # Risk 5: Perishable + near-expiry risk (added on top of stock/consumption scoring)
     is_perishable = _is_perishable(item_data)
-    days_until_expiry = _days_until_expiry(item_data)
+    expiry_value = item_data.get("expiry_date") or item_data.get("expiryDate")
+    days_until_expiry = days_until_expiry_fn(expiry_value)
     if days_until_expiry is not None:
         if days_until_expiry < 0:
             risk_factors.append({

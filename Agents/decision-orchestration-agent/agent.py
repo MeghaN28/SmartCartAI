@@ -7,8 +7,10 @@ Implements RAG with PostgreSQL for evidence-based decisions and explanations.
 import os
 import logging
 from typing import TypedDict, List, Dict, Optional, Literal
-from datetime import datetime
+from datetime import datetime, date
 from pathlib import Path
+
+from common.expiry import days_until_expiry
 
 import requests
 import psycopg2
@@ -456,19 +458,14 @@ NEAR_EXPIRY_DAYS = 14
 
 def _days_until_expiry_from_item(item_data: dict, historical_inventory: Optional[dict] = None) -> Optional[int]:
     """Get days until expiry from item_data (or historical_inventory). Supports expiry_date and expiryDate keys."""
-    from datetime import date
-    expiry_date = None
+    expiry_value = None
     if item_data:
-        expiry_date = item_data.get("expiry_date") or item_data.get("expiryDate")
-    if not expiry_date and historical_inventory:
-        expiry_date = historical_inventory.get("expiry_date") or historical_inventory.get("expiryDate")
-    if not expiry_date:
+        expiry_value = item_data.get("expiry_date") or item_data.get("expiryDate")
+    if not expiry_value and historical_inventory:
+        expiry_value = historical_inventory.get("expiry_date") or historical_inventory.get("expiryDate")
+    if not expiry_value:
         return None
-    try:
-        e = expiry_date if isinstance(expiry_date, date) else date.fromisoformat(str(expiry_date)[:10])
-        return (e - date.today()).days
-    except Exception:
-        return None
+    return days_until_expiry(expiry_value)
 
 
 def _urgency_factor(expiry_days_remaining: Optional[int]) -> float:
@@ -688,7 +685,8 @@ def pick_one_waste_suggestion(
 
     # Expiry tiers
     expired = days_until_expiry is not None and days_until_expiry < 0
-    urgent_donate_days = days_until_expiry is not None and 0 <= days_until_expiry <= DONATE_URGENT_DAYS
+    expires_today = days_until_expiry == 0
+    urgent_donate_days = days_until_expiry is not None and 1 <= days_until_expiry <= DONATE_URGENT_DAYS
     discount_window = (
         days_until_expiry is not None
         and DISCOUNT_WINDOW_LOW <= days_until_expiry <= DISCOUNT_WINDOW_HIGH
@@ -697,7 +695,7 @@ def pick_one_waste_suggestion(
         days_until_expiry is not None
         and BUNDLE_WINDOW_LOW <= days_until_expiry <= BUNDLE_WINDOW_HIGH
     )
-    near_expiry = days_until_expiry is not None and 0 <= days_until_expiry <= 10
+    near_expiry = days_until_expiry is not None and 1 <= days_until_expiry <= 10
     expiry_not_near = days_until_expiry is None or days_until_expiry > NEAR_EXPIRY_DAYS
 
     compatible_items = high_demand_bundle_candidates or []
@@ -755,6 +753,12 @@ def pick_one_waste_suggestion(
             f"{item_name} is past expiry ({days_until_expiry} days). Discard to avoid health risk; do not sell or donate."
         )
         return ("discard", reasoning, "Remove expired stock safely.", _overrides())
+
+    if expires_today:
+        reasoning = (
+            f"{item_name} expires today. Discard immediately to avoid spoilage risk."
+        )
+        return ("discard", reasoning, "Remove same-day expiring stock safely.", _overrides())
 
     # --- 2. Price increase: high demand + not near expiry ---
     if demand_high and expiry_not_near and within_budget and is_feasible:
