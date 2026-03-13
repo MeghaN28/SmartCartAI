@@ -161,24 +161,12 @@ public class AgentController {
     @Operation(summary = "Chat with the AI assistant about inventory")
     public ResponseEntity<Map<String, Object>> chat(@RequestBody Map<String, Object> payload) {
         try {
-            if (USE_MCP_CHAT) {
-                // MCP-first: call Chat Agent MCP tool over Streamable HTTP
-                McpStreamableHttpClient mcp = McpClients.chat(CHAT_AGENT_MCP_URL, objectMapper);
-                String query = payload.get("query") != null ? String.valueOf(payload.get("query")) : "";
-                String sessionId = payload.get("session_id") != null ? String.valueOf(payload.get("session_id")) : null;
-                boolean includeEval = payload.get("include_eval_context") != null
-                        && String.valueOf(payload.get("include_eval_context")).trim().equalsIgnoreCase("true");
-                Map<String, Object> args = new HashMap<>();
-                args.put("query", query);
-                if (sessionId != null) args.put("session_id", sessionId);
-                if (includeEval) args.put("include_eval_context", true);
-                Map<String, Object> result = mcp.callTool("chat", args);
-                return ResponseEntity.ok(result != null ? result : new HashMap<>());
-            } else {
-                String url = CHAT_AGENT_URL + "/chat";
-                Map<String, Object> response = restTemplate.postForObject(url, payload, Map.class);
-                return ResponseEntity.ok(response != null ? response : new HashMap<>());
-            }
+            String query = payload.get("query") != null ? String.valueOf(payload.get("query")) : "";
+            String sessionId = payload.get("session_id") != null ? String.valueOf(payload.get("session_id")) : null;
+            boolean includeEval = payload.get("include_eval_context") != null
+                    && String.valueOf(payload.get("include_eval_context")).trim().equalsIgnoreCase("true");
+            Map<String, Object> result = runChatAgentQuery(query, sessionId, includeEval);
+            return ResponseEntity.ok(result);
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();
             error.put("error", e.getMessage());
@@ -191,20 +179,14 @@ public class AgentController {
     @Operation(summary = "Get proactive inventory alerts (waste, out of stock, low stock, overstock) with recommendations")
     public ResponseEntity<Map<String, Object>> proactive(@RequestBody(required = false) Map<String, Object> payload) {
         try {
-            if (USE_MCP_CHAT) {
-                McpStreamableHttpClient mcp = McpClients.chat(CHAT_AGENT_MCP_URL, objectMapper);
-                Map<String, Object> body = payload != null ? payload : new HashMap<>();
-                String sessionId = body.get("session_id") != null ? String.valueOf(body.get("session_id")) : null;
-                Map<String, Object> args = new HashMap<>();
-                if (sessionId != null) args.put("session_id", sessionId);
-                Map<String, Object> result = mcp.callTool("proactive", args);
-                return ResponseEntity.ok(result != null ? result : new HashMap<>());
-            } else {
-                String url = CHAT_AGENT_URL + "/proactive";
-                Map<String, Object> body = payload != null ? payload : new HashMap<>();
-                Map<String, Object> response = restTemplate.postForObject(url, body, Map.class);
-                return ResponseEntity.ok(response != null ? response : new HashMap<>());
+            Map<String, Object> body = payload != null ? payload : new HashMap<>();
+            String sessionId = body.get("session_id") != null ? String.valueOf(body.get("session_id")) : null;
+            String query = body.get("query") != null ? String.valueOf(body.get("query")).trim() : "";
+            if (query.isBlank()) {
+                query = "What's going to waste?";
             }
+            Map<String, Object> result = runChatAgentQuery(query, sessionId, false);
+            return ResponseEntity.ok(result);
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();
             error.put("error", e.getMessage());
@@ -236,6 +218,27 @@ public class AgentController {
             error.put("error", e.getMessage());
             error.put("status", "unavailable");
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(error);
+        }
+    }
+
+    private Map<String, Object> runChatAgentQuery(String query, String sessionId, boolean includeEval) throws Exception {
+        String normalizedQuery = query != null ? query : "";
+        if (USE_MCP_CHAT) {
+            McpStreamableHttpClient mcp = McpClients.chat(CHAT_AGENT_MCP_URL, objectMapper);
+            Map<String, Object> args = new HashMap<>();
+            args.put("query", normalizedQuery);
+            if (sessionId != null) args.put("session_id", sessionId);
+            if (includeEval) args.put("include_eval_context", true);
+            Map<String, Object> result = mcp.callTool("chat", args);
+            return result != null ? result : new HashMap<>();
+        } else {
+            String url = CHAT_AGENT_URL + "/chat";
+            Map<String, Object> body = new HashMap<>();
+            body.put("query", normalizedQuery);
+            if (sessionId != null) body.put("session_id", sessionId);
+            if (includeEval) body.put("include_eval_context", true);
+            Map<String, Object> response = restTemplate.postForObject(url, body, Map.class);
+            return response != null ? response : new HashMap<>();
         }
     }
 

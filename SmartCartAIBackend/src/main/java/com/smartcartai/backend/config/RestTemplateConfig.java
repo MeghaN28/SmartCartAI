@@ -18,7 +18,7 @@ public class RestTemplateConfig {
     @Bean
     public RestTemplate restTemplate() {
         RestTemplate restTemplate = new RestTemplate();
-        String sharedToken = System.getenv().getOrDefault("AGENT_SHARED_TOKEN", "");
+        String sharedToken = System.getenv().getOrDefault("AGENT_SHARED_TOKEN", "smartcart-local-agent-token");
         if (!sharedToken.isBlank()) {
             List<ClientHttpRequestInterceptor> interceptors = new ArrayList<>(restTemplate.getInterceptors());
             interceptors.add(new ClientHttpRequestInterceptor() {
