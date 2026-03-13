@@ -26,7 +26,7 @@ Or manually:
 cd /Users/meghanarendrasimha/Documents/SmartCartAI/Agents/decision-orchestration-agent/subagents/chat
 
 # Set environment variables
-export MISTRAL_API_KEY=SWqT1KZpsaFqYIcd6AqFlvQrjK8xFWeC
+export MISTRAL_API_KEY=<your-mistral-api-key>
 export MISTRAL_MODEL=mistral-medium
 export DB_HOST=localhost
 export DB_PORT=5432

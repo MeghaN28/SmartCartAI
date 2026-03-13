@@ -68,7 +68,7 @@ A `.env` file has been created in `Agents/decision-orchestration-agent/` with th
 **Option 2: Set environment variables manually**
 ```bash
 # Mistral LLM
-MISTRAL_API_KEY=SWqT1KZpsaFqYIcd6AqFlvQrjK8xFWeC
+MISTRAL_API_KEY=<your-mistral-api-key>
 MISTRAL_MODEL=mistral-medium
 
 # Database (for RAG)

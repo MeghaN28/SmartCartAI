@@ -73,7 +73,7 @@ A `.env` file has been created in `Agents/decision-orchestration-agent/` with th
 
 **Option 2: Set environment variables manually**
 ```bash
-export MISTRAL_API_KEY=SWqT1KZpsaFqYIcd6AqFlvQrjK8xFWeC
+export MISTRAL_API_KEY=<your-mistral-api-key>
 export MISTRAL_MODEL=mistral-medium
 export DB_HOST=localhost
 export DB_PORT=5432
@@ -108,7 +108,7 @@ export PORT=9002
 
 # Explanation
 export PORT=9003
-export MISTRAL_API_KEY=SWqT1KZpsaFqYIcd6AqFlvQrjK8xFWeC
+export MISTRAL_API_KEY=<your-mistral-api-key>
 ```
 
 **Note:** `.env` files have been created for all subagents with the database credentials and Mistral API key configured.
