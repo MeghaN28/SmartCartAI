@@ -674,6 +674,8 @@ def call_decision_orchestrator_batch(items: List[Dict], user_asked_about_waste: 
         max(1, int(os.getenv("CHAT_ORCHESTRATOR_BATCH_WORKERS", "4"))),
     )
 
+    last_error: List[str] = []  # thread-safe: append only
+
     def _call_one(it: Dict) -> Optional[Dict]:
         payload = _build_orchestrator_payload(
             it,
@@ -696,10 +698,25 @@ def call_decision_orchestrator_batch(items: List[Dict], user_asked_about_waste: 
                 "explanation": data.get("explanation", {}),
             }
         except requests.exceptions.Timeout:
+            msg = "Orchestrator timed out."
             logger.warning("Orchestrate timeout for item %s", it.get("item_name"))
+            last_error.append(msg)
+            return None
+        except requests.exceptions.ConnectionError as e:
+            msg = "Orchestrator not reachable (is it running on port 9000 or 9100?)."
+            logger.error("Orchestrate connection failed for item %s: %s", it.get("item_name"), e)
+            last_error.append(msg)
             return None
         except Exception as e:
+            err_str = str(e).strip()[:200]
             logger.error("Orchestrate failed for item %s: %s", it.get("item_name"), e)
+            # Surface Mistral / auth / API errors to the user
+            if "401" in err_str or "unauthorized" in err_str.lower() or "api_key" in err_str.lower() or "mistral" in err_str.lower():
+                last_error.append("Mistral API key invalid or missing. Set MISTRAL_API_KEY in the Decision Orchestrator .env (Agents/decision-orchestration-agent/.env).")
+            elif "500" in err_str or "error" in err_str.lower():
+                last_error.append(err_str or "Orchestrator or subagent error (check Mistral API key and that subagents are running).")
+            else:
+                last_error.append(err_str or "Orchestrator failed.")
             return None
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -709,7 +726,11 @@ def call_decision_orchestrator_batch(items: List[Dict], user_asked_about_waste: 
             if out:
                 recs.append(out)
     if batch_items and not recs:
-        return None, "Could not get recommendations from orchestrator (all items failed or service unavailable)."
+        detail = last_error[-1] if last_error else "all items failed or service unavailable"
+        base = "Could not get recommendations from orchestrator (" + detail + ")."
+        if "mistral" not in detail.lower() and "api_key" not in detail.lower() and "not reachable" not in detail.lower():
+            base += " Check MISTRAL_API_KEY in Agents/decision-orchestration-agent/.env and that the Decision Orchestrator (and subagents) are running."
+        return None, base
     return recs, None
 
 
@@ -769,8 +790,30 @@ def _run_coro_sync(coro):
     return result["value"]
 
 
+def _call_orchestrator_http(payload: Dict) -> Dict:
+    """Fallback: POST to Decision Orchestrator HTTP /orchestrate (e.g. port 9000)."""
+    base = (DECISION_ORCHESTRATOR_URL or "").strip().rstrip("/")
+    if not base or not base.startswith("http"):
+        raise ValueError("DECISION_ORCHESTRATOR_URL not set or invalid")
+    url = base + "/orchestrate"
+    timeout = int(os.getenv("CHAT_ORCHESTRATOR_HTTP_TIMEOUT", "90"))
+    r = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=timeout)
+    if not r.ok:
+        try:
+            body = r.json()
+            err = body.get("error", r.text[:300])
+        except Exception:
+            err = r.text[:300] if r.text else "HTTP %s" % r.status_code
+        raise RuntimeError(err)
+    data = r.json()
+    # Normalize to same shape as MCP (backend may return { recommendation, ... } directly)
+    if "recommendation" in data:
+        return data
+    return {"recommendation": data.get("recommendation", {}), "risk_assessment": data.get("risk_assessment", {}), "feasibility_check": data.get("feasibility_check", {}), "cost_impact": data.get("cost_impact", {}), "explanation": data.get("explanation", {})}
+
+
 def _call_orchestrator_mcp(payload: Dict) -> Dict:
-    """Sync wrapper around FastMCP client tools/call to the orchestrator."""
+    """Call orchestrator via MCP (default 9100); on failure try HTTP /orchestrate (e.g. 9000)."""
     url = _orchestrator_mcp_url()
 
     async def _call():
@@ -778,7 +821,15 @@ def _call_orchestrator_mcp(payload: Dict) -> Dict:
             result = await c.call_tool("orchestrate", {"payload": payload})
             return result.data
 
-    return _run_coro_sync(_call())
+    try:
+        return _run_coro_sync(_call())
+    except Exception as e:
+        logger.warning("Orchestrator MCP failed (%s), trying HTTP fallback to %s", e, DECISION_ORCHESTRATOR_URL)
+        try:
+            return _call_orchestrator_http(payload)
+        except Exception as http_err:
+            logger.error("Orchestrator HTTP fallback failed: %s", http_err)
+            raise
 
 
 def save_suggestion(user_query: str, item: Dict, recommendation: Dict) -> Optional[int]:
@@ -943,8 +994,8 @@ def _format_recommendation_line(
             try:
                 days = days_until_expiry_fn(expiry_raw)
                 if days is None:
-                    continue
-                if days < 0:
+                    pass
+                elif days < 0:
                     signal_bits.append(f"expired {abs(days)}d ago")
                 elif days == 0:
                     signal_bits.append("expires today")

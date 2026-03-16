@@ -70,14 +70,27 @@ echo -e "${GREEN}Dashboard Agent (Flask) started on 9008${NC}"
 echo -e "${YELLOW}Starting MCP servers (Chat + Orchestrator)...${NC}"
 
 export SMARTCART_AGENT_MODE=mcp
+export DECISION_ORCHESTRATOR_URL="${DECISION_ORCHESTRATOR_URL:-http://localhost:9000}"
 
 cd "$SCRIPT_DIR/Agents/decision-orchestration-agent/subagents/chat"
 MCP_PORT=9106 nohup python3 agent.py >> "$SCRIPT_DIR/logs/mcp-chat.log" 2>&1 &
 echo -e "${GREEN}Chat MCP started on 9106${NC}"
 
 cd "$SCRIPT_DIR/Agents/decision-orchestration-agent"
-MCP_PORT=9100 nohup python3 agent.py >> "$SCRIPT_DIR/logs/mcp-orchestrator.log" 2>&1 &
-echo -e "${GREEN}Orchestrator MCP started on 9100${NC}"
+# PYTHONPATH so "from common.expiry" resolves (Agents/common/)
+# PORT=9000 (HTTP /orchestrate, /health) and MCP_PORT=9100 (MCP) so Chat/backend can reach orchestrator
+PYTHONPATH="$SCRIPT_DIR/Agents${PYTHONPATH:+:$PYTHONPATH}" PORT=9000 MCP_PORT=9100 nohup python3 agent.py >> "$SCRIPT_DIR/logs/mcp-orchestrator.log" 2>&1 &
+echo -e "${GREEN}Orchestrator started (HTTP 9000 + MCP 9100)${NC}"
+
+# Give orchestrator time to bind; verify it's up
+sleep 4
+if curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 "http://localhost:9000/health" 2>/dev/null | grep -q 200; then
+    echo -e "${GREEN}Orchestrator HTTP (9000) is up.${NC}"
+elif curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 "http://localhost:9100/mcp" 2>/dev/null; then
+    echo -e "${GREEN}Orchestrator MCP (9100) is up.${NC}"
+else
+    echo -e "${YELLOW}Warning: Orchestrator may not be ready yet. If 'What's going to waste?' fails, check logs/mcp-orchestrator.log${NC}"
+fi
 
 echo ""
 echo -e "${GREEN}Services started.${NC}"

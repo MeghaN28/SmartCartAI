@@ -21,6 +21,13 @@ from langchain_core.output_parsers import JsonOutputParser
 from langgraph.graph import StateGraph, START, END
 from fastmcp import FastMCP
 
+try:
+    from flask import Flask, request, jsonify
+except ImportError:
+    Flask = None  # type: ignore
+    request = None  # type: ignore
+    jsonify = None  # type: ignore
+
 # Load environment variables from .env file if it exists
 try:
     from dotenv import load_dotenv
@@ -53,6 +60,15 @@ SUBAGENT_URLS = {
     "explanation": os.getenv("EXPLANATION_AGENT_URL", "http://localhost:9003/explain"),
     "food_bank": os.getenv("FOOD_BANK_AGENT_URL", "http://localhost:9007/nearest"),
 }
+
+GENERIC_USAGE_VALUES = {"food", "perishable", "grocery", "general", "beverage", "snack"}
+
+
+def _has_specific_usage(value: Optional[str]) -> bool:
+    if not value:
+        return False
+    normalized = value.strip().lower()
+    return bool(normalized and normalized not in GENERIC_USAGE_VALUES)
 
 
 def _agent_headers() -> Dict[str, str]:
@@ -398,13 +414,13 @@ def retrieve_bundle_candidates(inventory_id: str, item_data: Dict, limit: int = 
     try:
         category = (item_data.get("category") or "").strip()
         form = (item_data.get("form") or "").strip()
-        use = (item_data.get("usage") or item_data.get("use") or "").strip()
+        usage = (item_data.get("usage") or item_data.get("use") or "").strip()
         conn = get_db_connection()
         cur = conn.cursor()
         # Get other items: same category, or same form, or same use; has stock; exclude self
         conditions = ["inventory_id != %s", "COALESCE(opening_stock, 0) > 0"]
         args = [inventory_id]
-        if category or form or use:
+        if category or form or usage:
             parts = []
             if category:
                 parts.append("(category IS NOT NULL AND TRIM(category) = %s)")
@@ -412,9 +428,9 @@ def retrieve_bundle_candidates(inventory_id: str, item_data: Dict, limit: int = 
             if form:
                 parts.append("(form IS NOT NULL AND TRIM(form) = %s)")
                 args.append(form)
-            if use:
+            if _has_specific_usage(usage):
                 parts.append("(usage IS NOT NULL AND TRIM(usage) = %s)")
-                args.append(use)
+                args.append(usage)
             if parts:
                 conditions.append("(" + " OR ".join(parts) + ")")
         cur.execute(
@@ -699,8 +715,6 @@ def pick_one_waste_suggestion(
     expiry_not_near = days_until_expiry is None or days_until_expiry > NEAR_EXPIRY_DAYS
 
     compatible_items = high_demand_bundle_candidates or []
-    if not compatible_items:
-        compatible_items = filter_high_demand_candidates(similar_items if similar_items else bundle_candidates)
     compatible_items = [c for c in compatible_items if c.get("item_name")]
     has_high_demand_similar = len(compatible_items) > 0
 
@@ -961,7 +975,7 @@ def run_decision_engine(state: DecisionOrchestratorState) -> dict:
     is_perishable = _is_item_perishable(merged_item_data)
     forecasted = forecasted if forecasted is not None else get_latest_predicted_demand(inventory_id)
     demand_signal = get_demand_signal(forecasted)
-    high_demand_bundle_candidates = filter_high_demand_candidates(similar_items if similar_items else bundle_candidates)
+    high_demand_bundle_candidates = filter_high_demand_candidates(bundle_candidates)
 
     action_key, reasoning, expected_outcome, overrides = pick_one_waste_suggestion(
         state.get("risk_assessment", {}),
@@ -1729,9 +1743,49 @@ def orchestrate(payload: dict) -> dict:
     }
 
 
+# -----------------------------------------------------------------------------
+# HTTP server (port 9000) for /orchestrate and /health when Chat/backend use HTTP
+# -----------------------------------------------------------------------------
+
+def _run_orchestrate_http(payload: dict) -> dict:
+    """Same logic as MCP orchestrate tool; used by Flask POST /orchestrate."""
+    return orchestrate(payload)
+
+
+if Flask is not None:
+    _http_app = Flask(__name__)
+
+    @_http_app.route("/health")
+    def _http_health():
+        return jsonify({"status": "ok", "agent": "decision-orchestrator", "transport": "http"})
+
+    @_http_app.route("/orchestrate", methods=["POST"])
+    def _http_orchestrate():
+        try:
+            body = request.get_json(silent=True) or {}
+            result = _run_orchestrate_http(body)
+            return jsonify(result)
+        except Exception as e:
+            logger.exception("HTTP /orchestrate failed")
+            return jsonify({"error": str(e)[:200]}), 500
+
+
+def _run_flask_http(port: int, host: str = "0.0.0.0"):
+    if Flask is None:
+        logger.warning("Flask not installed; HTTP /orchestrate will not be available. Install with: pip install flask")
+        return
+    _http_app.run(host=host, port=port, debug=False, use_reloader=False, threaded=True)
+
+
 if __name__ == "__main__":
-    # MCP-only: expose tools at http://host:port/mcp
+    import threading
     mcp_port = int(os.getenv("MCP_PORT", "9100"))
+    http_port = int(os.getenv("PORT", "9000"))
     host = os.getenv("MCP_HOST", "0.0.0.0")
+    # Start HTTP server (9000) in a daemon thread so Chat Agent / backend can use POST /orchestrate
+    if Flask is not None:
+        t = threading.Thread(target=_run_flask_http, args=(http_port, host), daemon=True)
+        t.start()
+        logger.info("Decision Orchestrator HTTP server on %s:%s (/orchestrate, /health)", host, http_port)
     logger.info("Starting Decision Orchestrator MCP server on %s:%s", host, mcp_port)
     mcp.run(transport="http", host=host, port=mcp_port)

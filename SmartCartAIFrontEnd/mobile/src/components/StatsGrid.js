@@ -4,7 +4,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { colors, spacing, radius, typography, shadows } from '../theme';
 
 const ITEMS = [
-  { label: 'Total Items', key: 'totalItems', icon: '📦' },
+  { label: 'Categories', key: 'totalItems', icon: '📦' },
   { label: 'In Stock', key: 'inStock', icon: '✅' },
   { label: 'Low Stock', key: 'lowStock', icon: '⚠️' },
   { label: 'Out of Stock', key: 'outOfStock', icon: '❌' },

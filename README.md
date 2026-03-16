@@ -295,6 +295,16 @@ python3 /Users/meghanarendrasimha/Documents/SmartCartAI/evaluation/ragas/run_eva
 
 Prereq: make sure the backend is running at `http://localhost:8080` (and the agents are up if your chat endpoint depends on them).
 
+## Waste Reduction Analysis
+
+`./scripts/waste_graphs.py` creates the charts stored in `scripts/analysis/`; the figures provide the following story:
+
+- **Bridging forecasting to action.** The `analysis/stock_vs_expiring_vs_resolved.png` and `analysis/before_after_waste.png` charts illustrate how demand forecasts for perishables feed into the recommendation pipeline, turning expiring stock signals into real-time discounts, bundles, donations, and discards instead of spoilage.
+- **Agentic execution.** The Inventory Agent → Decision Orchestrator → risk/feasibility/cost/food-bank/explanation subagent chain described in `docs/architecture.md` drives the recommendations whose impacts are plotted throughout the analysis folder.
+- **Evaluation outcome.** Across the 50 inventory categories in the dataset, 24 were identified as near-expiry and every one of those categories received at least one waste-action recommendation (see the action counts in `analysis/action_distribution.png`).
+- **Operational effectiveness.** `analysis/resolution_percent.png` reports roughly 95 % of expiring stock being resolved by discounting, bundling, or donating, while `analysis/action_percent_breakdown.png` shows how that resolution splits between tactics.
+- **Waste reduction summary.** `analysis/before_after_waste.png` documents how ~2,530 units of potential spoilage shrink to ~700 after SmartCart AI steps in, meaning around **1,830 units** were prevented from going to waste through the combined strategy.
+
 ## Data & Scripts
 
 - **Dataset**: `inventory_master_50_unique.csv`, `sales_50.csv`, `consumption_50.csv`; generate with `python createdataset.py` in `Dataset/`.

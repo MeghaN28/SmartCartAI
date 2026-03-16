@@ -10,7 +10,11 @@ export default function InventoryCard({ item, getStockStatus, statusLabels, stat
   const stockPercentage =
     item.threshold > 0 ? Math.min((item.quantity / (item.threshold * 3)) * 100, 100) : 0;
   const daysUntilExpiry = getDaysUntilExpiry ? getDaysUntilExpiry(item.expiryDate) : null;
-  const expirySoon = daysUntilExpiry != null && daysUntilExpiry >= 0 && daysUntilExpiry <= 14;
+  const expirySoon = daysUntilExpiry != null && daysUntilExpiry <= 14;
+  const expired = daysUntilExpiry != null && daysUntilExpiry < 0;
+  const expiryLabel = expired ? 'Expired' : `Expires in ${daysUntilExpiry}d`;
+  const expiryTagBg = expired ? '#f8717166' : '#f9731633';
+  const expiryTagColor = expired ? '#dc2626' : '#f97316';
 
   return (
     <View
@@ -43,9 +47,9 @@ export default function InventoryCard({ item, getStockStatus, statusLabels, stat
             </Text>
           </View>
           {expirySoon && (
-            <View style={[styles.statusTag, { backgroundColor: '#f9731633' }]}>
-              <Text style={[styles.statusText, { color: '#f97316' }]}>
-                Expires in {daysUntilExpiry}d
+            <View style={[styles.statusTag, { backgroundColor: expiryTagBg }]}> 
+              <Text style={[styles.statusText, { color: expiryTagColor }]}> 
+                {expiryLabel}
               </Text>
             </View>
           )}

@@ -22,7 +22,7 @@ export default function HeroSection({ stats, onExpirySoonPress }) {
       <View style={[styles.statsRow, { backgroundColor: c.bgSecondary }]}>
         <View style={styles.stat}>
           <Text style={[styles.statNum, { color: c.text }]}>{stats.total}</Text>
-          <Text style={[styles.statLabel, { color: c.textSecondary }]}>Total</Text>
+          <Text style={[styles.statLabel, { color: c.textSecondary }]}>Categories</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.stat}>
