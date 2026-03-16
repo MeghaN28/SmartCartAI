@@ -166,6 +166,15 @@ export default function DashboardScreen() {
     { name: 'Out of Stock', value: stats.outOfStock, color: '#ef4444' },
   ];
 
+  const stockChartData = React.useMemo(() => {
+    if (!inventory.length) return [];
+    const sorted = [...inventory].sort((a, b) => safeNumber(b.quantity) - safeNumber(a.quantity));
+    return sorted.slice(0, 12).map((item) => ({
+      name: item.name,
+      quantity: safeNumber(item.quantity),
+    }));
+  }, [inventory]);
+
   const lowStockAlerts = inventory.filter((i) => getStockStatus(i) === 'low-stock');
 
   const handleEdit = (item) => {
@@ -379,7 +388,13 @@ export default function DashboardScreen() {
       </View>
 
       <StatsGrid stats={stats} />
-      <ChartsSection categoryChartData={categoryChartData} statusData={statusData} salesChartData={salesChartData} colors={chartC} />
+      <ChartsSection
+        categoryChartData={categoryChartData}
+        statusData={statusData}
+        salesChartData={salesChartData}
+        stockChartData={stockChartData}
+        colors={chartC}
+      />
       <LowStockAlerts lowStockAlerts={lowStockAlerts} />
 
       <View style={[styles.section, styles.proactiveSection]}>

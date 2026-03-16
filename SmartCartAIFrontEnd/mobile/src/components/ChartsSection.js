@@ -19,7 +19,13 @@ const chartConfig = (c) => ({
   labelColor: () => c.textSecondary,
 });
 
-export default function ChartsSection({ categoryChartData, statusData, salesChartData, colors: chartColors }) {
+export default function ChartsSection({
+  categoryChartData,
+  statusData,
+  salesChartData,
+  stockChartData,
+  colors: chartColors,
+}) {
   const { theme } = useTheme();
   const c = colors[theme] || colors.dark;
   const config = chartConfig(c);
@@ -30,6 +36,8 @@ export default function ChartsSection({ categoryChartData, statusData, salesChar
     population: s.value || 0,
     color: s.color,
   }));
+
+  const stockEntries = (stockChartData || []).slice(0, 12);
 
   return (
     <View style={styles.section}>
@@ -68,6 +76,29 @@ export default function ChartsSection({ categoryChartData, statusData, salesChar
             data={{
               labels: categoryChartData.map((d) => (d.name || '').slice(0, 8)),
               datasets: [{ data: categoryChartData.map((d) => d.quantity || 0) }],
+            }}
+            width={width}
+            height={220}
+            yAxisLabel=""
+            chartConfig={config}
+            style={styles.chart}
+            fromZero
+          />
+        </View>
+      )}
+      {stockEntries.length > 0 && (
+        <View
+          style={[
+            styles.chartCard,
+            { backgroundColor: c.card, borderColor: c.border },
+            shadows.sm,
+          ]}
+        >
+          <Text style={[styles.chartTitle, { color: c.text }]}>Top stocked items</Text>
+          <BarChart
+            data={{
+              labels: stockEntries.map((d) => (d.name || '').slice(0, 10)),
+              datasets: [{ data: stockEntries.map((d) => d.quantity || 0) }],
             }}
             width={width}
             height={220}

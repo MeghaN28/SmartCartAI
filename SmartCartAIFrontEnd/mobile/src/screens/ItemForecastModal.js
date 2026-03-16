@@ -83,23 +83,6 @@ export default function ItemForecastModal({ item, parsed, onClose }) {
             </View>
           )}
 
-          {demandChart && demandChart.labels && demandChart.labels.length > 0 && (
-            <View style={[styles.chartBox, { backgroundColor: c.card, borderColor: c.border }]}>
-              <Text style={[styles.chartTitle, { color: c.text }]}>Demand Trend</Text>
-              <LineChart
-                data={{
-                  labels: demandChart.labels,
-                  datasets: [{ data: demandChart.predicted || [] }],
-                }}
-                width={width}
-                height={180}
-                chartConfig={chartConfig(c)}
-                fromZero
-                style={styles.chart}
-              />
-            </View>
-          )}
-
           {metrics && (
             <View style={[styles.metricsBox, { backgroundColor: c.card, borderColor: c.border }]}>
               <Text style={[styles.sectionTitle, { color: c.text }]}>Key Metrics</Text>

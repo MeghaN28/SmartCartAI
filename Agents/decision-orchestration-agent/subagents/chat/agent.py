@@ -967,43 +967,62 @@ def _format_recommendation_line(
     query_type: Optional[str] = None,
     no_expiry_hint: bool = False,
 ) -> str:
-    """Format a single recommendation for chat: action, discount %, bundle, discard + reason, explanation.
-    If item and query_type provided, can add stock status and demand for next week.
-    If no_expiry_hint (waste query but item has no expiry_date), add hint to set expiry for discount/donation."""
+    """Format a single recommendation for chat: action plus full sentence reasoning."""
     rec = recommendation.get("recommendation", {})
-    action = rec.get("action", "none")
+    action = (rec.get("action") or "none").lower()
     priority = rec.get("priority", "Medium")
     reasoning = rec.get("reasoning", "") or ""
     reasoning_clean = " ".join(str(reasoning).split())
-    p_norm = str(priority or "").strip().lower()
-    p_badge = "🟡"
-    if p_norm == "high":
-        p_badge = "🔴"
-    elif p_norm == "low":
-        p_badge = "🟢"
-    parts = [f"{p_badge} {item_name} | Action: {action.upper()} | Priority: {str(priority).upper()}"]
-    if no_expiry_hint:
-        parts.append("\n   Note: No expiry date set. Add expiry_date to unlock discount/donation suggestions.")
 
-    # Explainable "signals" (expiry/stock/demand) for inventory manager UI.
+    def _with_period(text: str) -> str:
+        text = (text or "").strip()
+        if not text:
+            return ""
+        return text if text.endswith(".") else text + "."
+
+    def _describe_action() -> str:
+        if action == "discard":
+            return f"Discard {item_name} immediately to eliminate the spoilage or health risk"
+        if action == "donate":
+            return f"Donate {item_name} while it is still usable"
+        if action == "discount":
+            pct = rec.get("suggested_discount_percent")
+            if pct is not None:
+                return f"Discount {item_name} by {pct}% to accelerate sell-through before expiry"
+            return f"Discount {item_name} now to increase sales velocity"
+        if action == "bundle":
+            bundle = rec.get("bundle_suggestion")
+            if bundle:
+                return f"Bundle {item_name} with {bundle}"
+            return f"Bundle {item_name} with a complementary item to boost demand"
+        if action == "reorder":
+            return f"Reorder {item_name} because current levels cannot sustain demand"
+        if action == "price_increase":
+            pct = rec.get("suggested_price_increase_percent")
+            if pct is not None:
+                return f"Increase {item_name}'s price by {pct}% given strong demand"
+            return f"Raise {item_name}'s price to match demand"
+        if action == "hold":
+            return f"Hold {item_name} and monitor sales before making changes"
+        if action == "none":
+            return f"Review {item_name} manually as no automatic action was selected"
+        return f"Recommend {action} for {item_name}"
+
     signal_bits: List[str] = []
     if item:
-        # Expiry signal
         expiry_raw = item.get("expiry_date")
         if expiry_raw:
             try:
                 days = days_until_expiry_fn(expiry_raw)
-                if days is None:
-                    pass
-                elif days < 0:
-                    signal_bits.append(f"expired {abs(days)}d ago")
-                elif days == 0:
-                    signal_bits.append("expires today")
-                else:
-                    signal_bits.append(f"expires in {days}d")
+                if days is not None:
+                    if days < 0:
+                        signal_bits.append(f"expired {abs(days)} day(s) ago")
+                    elif days == 0:
+                        signal_bits.append("expires today")
+                    else:
+                        signal_bits.append(f"expires in {days} day(s)")
             except Exception:
                 pass
-        # Stock signal
         stock = item.get("remaining_stock")
         if stock is None:
             stock = item.get("opening_stock")
@@ -1018,61 +1037,51 @@ def _format_recommendation_line(
             min_val = None
         if stock_val is not None:
             if min_val is not None:
-                signal_bits.append(f"stock {stock_val} (min {min_val})")
+                signal_bits.append(f"stock {stock_val} (minimum {min_val})")
             else:
                 signal_bits.append(f"stock {stock_val}")
-        # Demand signal
         fd = item.get("forecasted_demand")
         if fd is not None and query_type in ("demand", "out_of_stock", "low_stock", "check", "stock_status"):
             try:
                 next_week = round(float(fd) * 7, 1)
-                signal_bits.append(f"forecast ~{next_week}/7d")
+                signal_bits.append(f"forecast ~{next_week} units over 7 days")
             except Exception:
                 pass
 
+    signal_sentence = ""
     if signal_bits:
-        parts.append("\n   Signals: " + ", ".join(signal_bits[:3]))
+        signal_sentence = f"Current signals: {signal_bits[0].capitalize()}"
+        if len(signal_bits) > 1:
+            signal_sentence += ", " + ", ".join(signal_bits[1:])
+        signal_sentence = _with_period(signal_sentence)
 
-    # Query-type badges (kept short; UI uses these as explainable cues)
-    if item and query_type in ("out_of_stock", "overstock", "demand", "low_stock", "check", "stock_status"):
-        stock = item.get("remaining_stock", item.get("opening_stock", 0))
-        min_s = item.get("min_stock", 0)
-        try:
-            stock_i = int(stock)
-        except Exception:
-            stock_i = stock
-        try:
-            min_i = int(min_s) if min_s is not None else 0
-        except Exception:
-            min_i = min_s
-        if isinstance(stock_i, int) and stock_i <= 0:
-            parts.append("\n   Stock status: 🔴 OUT OF STOCK")
-        elif isinstance(stock_i, int) and isinstance(min_i, int) and min_i and stock_i < min_i:
-            parts.append("\n   Stock status: 🟠 NEAR STOCKOUT")
-        elif query_type == "overstock":
-            parts.append("\n   Stock status: 🟣 OVERSTOCK")
+    reason_sentence = ""
+    if include_reason and reasoning_clean:
+        cap = 220 if action in ("donate", "bundle", "discount", "discard") else 160
+        snippet = reasoning_clean[:cap]
+        reason_sentence = _with_period(snippet[: cap]) if snippet else ""
+    elif not reasoning_clean and signal_sentence:
+        reason_sentence = ""  # rely on signal sentence for explanation
 
-    if reasoning_clean:
-        cap = 220 if action.lower() in ("donate", "bundle", "discount", "discard") else 160
-        parts.append(f"\n   Why: {reasoning_clean[:cap]}" + ("..." if len(reasoning_clean) > cap else ""))
+    extras_sentences: List[str] = []
+    discount_pct = rec.get("suggested_discount_percent")
+    if discount_pct is not None:
+        extras_sentences.append(_with_period(f"Suggested discount: {discount_pct}%"))
+    price_increase_pct = rec.get("suggested_price_increase_percent")
+    if price_increase_pct is not None:
+        extras_sentences.append(_with_period(f"Suggested price increase: {price_increase_pct}%"))
+    suggested_price = rec.get("suggested_selling_price")
+    if suggested_price is not None:
+        extras_sentences.append(_with_period(f"Suggested selling price: {suggested_price}"))
+    bundle_suggestion = rec.get("bundle_suggestion")
+    if bundle_suggestion:
+        extras_sentences.append(_with_period(f"Bundle suggestion: {bundle_suggestion}"))
+    discard_reason = rec.get("discard_reason")
+    if discard_reason:
+        extras_sentences.append(_with_period(f"Discard reason: {discard_reason}"))
 
-    extras = []
-    if rec.get("suggested_discount_percent") is not None:
-        extras.append(f"Discount: {rec.get('suggested_discount_percent')}%")
-    if rec.get("suggested_price_increase_percent") is not None:
-        extras.append(f"Price increase: {rec.get('suggested_price_increase_percent')}%")
-    if rec.get("suggested_selling_price") is not None:
-        extras.append(f"Sell at: {rec.get('suggested_selling_price')}")
-    if rec.get("bundle_suggestion"):
-        extras.append(f"Bundle: {rec.get('bundle_suggestion')}")
-    if rec.get("discard_reason"):
-        extras.append(f"Discard reason: {rec.get('discard_reason')}")
-    if rec.get("waste_action"):
-        extras.append(rec.get("waste_action"))
     nearest_fb = rec.get("nearest_food_banks") or []
-    # Only show food bank locations when the recommended action is to donate.
-    if nearest_fb and action.lower() == "donate":
-        # Exact donation location: name and full address (use separate list so we don't overwrite parts)
+    if nearest_fb and action == "donate":
         donation_parts = []
         for fb in nearest_fb[:3]:
             name = str(fb.get("name", "")).strip()
@@ -1086,22 +1095,37 @@ def _format_recommendation_line(
             elif name:
                 donation_parts.append(name)
         if donation_parts:
-            extras.append("Donate to: " + "; ".join(donation_parts))
-    if extras:
-        parts.append("\n   Commercial: " + ", ".join(extras))
+            extras_sentences.append(_with_period(f"Recommended donation locations: {'; '.join(donation_parts)}"))
 
-    if include_reason:
-        # Add explanation agent output when it's non-generic and not duplicating reasoning.
-        explanation = recommendation.get("explanation", {})
-        if isinstance(explanation, dict) and explanation.get("explanation"):
-            expl = " ".join(str(explanation.get("explanation") or "").split()).strip()
-            expl_l = expl.lower()
-            if expl and "no action" not in expl_l and "recommended action is to none" not in expl_l and "unable to generate explanation" not in expl_l:
-                # Avoid repeating the same text as reasoning.
-                if not reasoning_clean or (expl[:60].lower() not in reasoning_clean.lower()):
-                    parts.append(f"\n   Explanation: {expl[:160]}" + ("..." if len(expl) > 160 else ""))
+    if no_expiry_hint:
+        extras_sentences.append(_with_period("No expiry date set; add expiry_date so we can suggest discount or donation actions"))
 
-    return "".join(parts)
+    priority_sentence = _with_period(f"Priority: {priority}")
+
+    result_sentences: List[str] = []
+    action_sentence = _with_period(_describe_action())
+    if action_sentence:
+        result_sentences.append(f"{item_name}: {action_sentence}")
+    if reason_sentence:
+        result_sentences.append(reason_sentence)
+    if signal_sentence and not reason_sentence:
+        result_sentences.append(signal_sentence)
+    elif signal_sentence and reason_sentence:
+        result_sentences.append(signal_sentence)
+    if extras_sentences:
+        result_sentences.extend([s for s in extras_sentences if s])
+    if priority_sentence:
+        result_sentences.append(priority_sentence)
+
+    explanation = recommendation.get("explanation", {})
+    if include_reason and isinstance(explanation, dict):
+        expl_text = " ".join(str(explanation.get("explanation") or "").split()).strip()
+        expl_l = expl_text.lower()
+        if expl_text and "no action" not in expl_l and "recommended action is to none" not in expl_l and "unable to generate explanation" not in expl_l:
+            if not reasoning_clean or (expl_text[:60].lower() not in reasoning_clean.lower()):
+                result_sentences.append(_with_period(f"Explanation: {expl_text[:160]}"))
+
+    return " ".join(s for s in result_sentences if s)
 
 
 def _build_food_bank_map_url(food_banks: List[Dict]) -> Optional[str]:
@@ -1350,6 +1374,38 @@ IMPORTANT: Output plain text only. Do not use markdown: no asterisks for bold, n
     }
 
 
+def _needs_minimum_explanation(query_lower: str) -> bool:
+    """True if the user is asking what the inventory 'minimum' refers to."""
+    normalized = query_lower.replace("-", " ").replace("_", " ")
+    minimum_terms = (
+        "minimum",
+        "min stock",
+        "min stock level",
+        "min level",
+        "min_stock",
+        "minlevel",
+        "safety stock",
+        "target stock",
+    )
+    question_terms = (
+        "what",
+        "mean",
+        "meaning",
+        "explain",
+        "explanation",
+        "definition",
+        "describe",
+        "why",
+        "how",
+        "tell me",
+        "what is",
+        "what does",
+    )
+    has_min = any(term in normalized for term in minimum_terms)
+    has_question = any(term in normalized for term in question_terms)
+    return has_min and has_question
+
+
 def process_chat_query(query: str, session_id: str = None, include_eval_context: bool = False) -> Dict:
     """Process a chat query: check inventory, call decision agent, store suggestions. Filter by intent."""
     query_lower = query.lower().strip()
@@ -1378,6 +1434,15 @@ def process_chat_query(query: str, session_id: str = None, include_eval_context:
             "map_search_url": map_search_url,
             "retrieved_contexts": retrieved_contexts or [],
         }
+
+    if _needs_minimum_explanation(query_lower):
+        explanation = (
+            "The \"minimum\" number shown in SmartCartAI is the `min_stock` field stored on each inventory row (see `inventory.min_stock`). "
+            "It represents your safety-stock target—the quantity you aim to keep so normal demand can be met without running out. "
+            "When current stock reaches or drops below that minimum the risk-assessment agent flags it as low/out-of-stock, so the system can suggest reordering or waste actions. "
+            "When an item is expired but still above the minimum, the alert simply reports how much stock you still hold versus that target; the discard/donate call is driven by expiry and buffer rather than the minimum value itself."
+        )
+        return _build_response(explanation)
 
     # Direct nearest-food-bank lookup when user asks specifically about food banks.
     if is_food_bank_query and intent not in ("waste", "donate", "discount", "bundle", "discard", "reorder", "pricing", "price_increase"):
