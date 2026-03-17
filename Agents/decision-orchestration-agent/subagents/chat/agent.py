@@ -996,7 +996,7 @@ def _format_recommendation_line(
                 return f"Bundle {item_name} with {bundle}"
             return f"Bundle {item_name} with a complementary item to boost demand"
         if action == "reorder":
-            return f"Reorder {item_name} because current levels cannot sustain demand"
+            return f"Reorder {item_name} immediately because current levels cannot sustain demand"
         if action == "price_increase":
             pct = rec.get("suggested_price_increase_percent")
             if pct is not None:
@@ -1009,9 +1009,10 @@ def _format_recommendation_line(
         return f"Recommend {action} for {item_name}"
 
     signal_bits: List[str] = []
+    allow_expiry_signals = action != "reorder"
     if item:
         expiry_raw = item.get("expiry_date")
-        if expiry_raw:
+        if expiry_raw and allow_expiry_signals:
             try:
                 days = days_until_expiry_fn(expiry_raw)
                 if days is not None:

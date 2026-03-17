@@ -1254,10 +1254,9 @@ Provide a structured recommendation as JSON with:
                 discard_reason = strip_markdown(discard_reason).strip() or None
             action = llm_result.get("action", state.get("suggested_action", "none"))
             suggested_action = state.get("suggested_action", "none")
-            # Reorder (low stock): one clear suggestion — reorder by expiry date; suggest 1-2% price increase
+            # Reorder (low stock): one clear suggestion — reorder immediately; suggest 1-2% price increase
             if suggested_action == "reorder" or action == "reorder":
-                expiry_str = f" by {expiry_date}" if expiry_date else ""
-                reasoning = f"Reorder{expiry_str} to maintain stock; prioritize by expiry date."
+                reasoning = "Reorder immediately to maintain stock and prevent stockouts."
                 price_inc_pct, increased_price = _reorder_price_increase_suggestion(
                     merged_item_data,
                     historical_context,
@@ -1376,8 +1375,7 @@ Provide a structured recommendation as JSON with:
             logger.error(f"LLM synthesis failed: {e}")
             suggested_action = state.get("suggested_action", "none")
             if suggested_action == "reorder":
-                expiry_str = f" by {expiry_date}" if expiry_date else ""
-                reasoning = f"Reorder{expiry_str} to maintain stock; prioritize by expiry date."
+                reasoning = "Reorder immediately to maintain stock and prevent stockouts."
                 price_inc_pct, increased_price = _reorder_price_increase_suggestion(
                     merged_item_data,
                     None,
