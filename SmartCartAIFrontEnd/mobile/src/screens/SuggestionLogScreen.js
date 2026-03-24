@@ -192,6 +192,11 @@ export default function SuggestionLogScreen() {
         </View>
       ) : (
         suggestions.map((suggestion) => {
+          const rawBundleText = suggestion.bundleSuggestion ? stripMarkdown(String(suggestion.bundleSuggestion)) : '';
+          const bundleText = rawBundleText?.trim();
+          const showBundleSuggestion = bundleText && bundleText !== '0';
+          const statusRaw = suggestion.status ? String(suggestion.status).trim() : '';
+          const showStatusBadge = statusRaw && statusRaw.toLowerCase() !== 'pending';
           const isSelected = selectedIds.includes(suggestion.suggestionId);
           return (
           <View
@@ -259,6 +264,13 @@ export default function SuggestionLogScreen() {
               }
             })()}
 
+            {showBundleSuggestion && (
+              <View style={styles.section}>
+                <Text style={[styles.label, { color: c.textSecondary }]}>Bundle suggestion</Text>
+                <Text style={[styles.outcomeText, { color: c.text }]}>{bundleText}</Text>
+              </View>
+            )}
+
             <View style={styles.detailsGrid}>
               <View style={styles.detailItem}>
                 <Text style={[styles.detailLabel, { color: c.textSecondary }]}>Current Stock</Text>
@@ -268,26 +280,16 @@ export default function SuggestionLogScreen() {
                 <Text style={[styles.detailLabel, { color: c.textSecondary }]}>Min Stock</Text>
                 <Text style={[styles.detailValue, { color: c.text }]}>{suggestion.minStock || 0}</Text>
               </View>
-              <View style={styles.detailItem}>
-                <Text style={[styles.detailLabel, { color: c.textSecondary }]}>Risk Level</Text>
-                <Text style={[styles.detailValue, { color: c.text }]}>{suggestion.riskLevel || 'N/A'}</Text>
-              </View>
-              {suggestion.estimatedCost && (
-                <View style={styles.detailItem}>
-                  <Text style={[styles.detailLabel, { color: c.textSecondary }]}>Est. Cost</Text>
-                  <Text style={[styles.detailValue, { color: c.text }]}>
-                    ${suggestion.estimatedCost.toFixed(2)}
+            </View>
+
+            <View style={[styles.footerRow, !showStatusBadge && { justifyContent: 'flex-end' }]}>
+              {showStatusBadge && (
+                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(statusRaw) + '30' }]}>
+                  <Text style={[styles.statusText, { color: getStatusColor(statusRaw) }]}>
+                    {statusRaw}
                   </Text>
                 </View>
               )}
-            </View>
-
-            <View style={styles.footerRow}>
-              <View style={[styles.statusBadge, { backgroundColor: getStatusColor(suggestion.status) + '30' }]}>
-                <Text style={[styles.statusText, { color: getStatusColor(suggestion.status) }]}>
-                  {suggestion.status || 'pending'}
-                </Text>
-              </View>
               <Text style={[styles.timestamp, { color: c.textSecondary }]}>
                 {suggestion.createdAt ? new Date(suggestion.createdAt).toLocaleString() : '—'}
               </Text>
