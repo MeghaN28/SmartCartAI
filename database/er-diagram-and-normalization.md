@@ -12,6 +12,10 @@ erDiagram
     inventory ||--o{ consumption : "consumed in"
     inventory ||--o{ demand : "predicted for"
     inventory ||--o{ suggestions : "recommended for"
+    vendor ||--o{ inventory : "supplies"
+    vendor ||--o{ sales : "invoiced by"
+    suggestions ||--o{ suggestion_food_bank : "matched to"
+    food_banks ||--o{ suggestion_food_bank : "matched from"
 
     inventory {
         varchar inventory_id PK
@@ -20,17 +24,26 @@ erDiagram
         text form
         text use
         text item_type
-        varchar vendor_id
+        varchar vendor_id FK
         int min_stock
         int max_capacity
         int opening_stock
         date expiry_date
+        varchar expiry_date_type
         numeric selling_price
+    }
+
+    vendor {
+        varchar vendor_id PK
+        text name
+        text contact_email
+        varchar phone
+        timestamp created_at
     }
 
     sales {
         varchar invoice_id PK
-        varchar vendor_id
+        varchar vendor_id FK
         varchar inventory_id FK
         date purchase_date
         int quantity
@@ -82,7 +95,15 @@ erDiagram
         numeric forecasted_demand
         timestamp created_at
         varchar status
-        text donation_info
+        text donation_info "deprecated: legacy JSON snapshot, pre-migration rows only"
+    }
+
+    suggestion_food_bank {
+        serial id PK
+        int suggestion_id FK
+        int food_bank_id FK
+        int rank
+        numeric distance_mi
     }
 
     facility {
@@ -135,35 +156,41 @@ erDiagram
 - **suggestions**: PK is `suggestion_id`; attributes describe the AI recommendation; `inventory_id` is FK.
 - **facility**: PK is `facility_id`; attributes describe the store location.
 - **food_banks**: PK is `food_bank_id`; attributes describe the food bank. No composite PKs, so no partial dependencies.
+- **vendor**: PK is `vendor_id`; attributes describe the vendor.
+- **suggestion_food_bank**: PK is `id`; `rank`/`distance_mi` describe the (suggestion, food bank) match itself, not either FK column alone -- this is why it's a separate table rather than columns bolted onto `suggestions`.
 
 ### 3NF (Third Normal Form)
 
 - **Rule**: 2NF + no non-key attribute depends on another non-key attribute (no transitive dependency).
 - **Applied**:
-  - **inventory**: Non-key attributes (item_name, category, form, use, item_type, vendor_id, min_stock, max_capacity, opening_stock) depend only on `inventory_id`. `vendor_id` is a reference; moving vendor details to a separate `vendor` table would be a further 3NF refinement if vendor name/address were stored here.
+  - **inventory**: Non-key attributes (item_name, category, form, use, item_type, vendor_id, min_stock, max_capacity, opening_stock, expiry_date, expiry_date_type, selling_price) depend only on `inventory_id`. `vendor_id` is now a proper FK into `vendor` (see below) rather than a repeated code.
   - **sales**: Attributes depend on the invoice line; `inventory_id` and `vendor_id` are FKs, not stored descriptive attributes that depend on each other.
   - **consumption**: Attributes depend on the transaction; `inventory_id` is FK only.
   - **demand**: Attributes depend on the prediction record; `inventory_id` is FK only.
-  - **suggestions**: Attributes depend on the recommendation; `inventory_id` is FK only; `donation_info` is a JSON snapshot, not a transitive dependency.
+  - **suggestions**: Attributes depend on the recommendation; `inventory_id` is FK only. `donation_info` (legacy JSON snapshot) is deprecated -- it stored `food_banks.name`/`address` as a duplicated blob (a transitive dependency, not just JSON-in-TEXT), which `suggestion_food_bank` below removes.
+  - **vendor**: Attributes (name, contact_email, phone) depend only on `vendor_id`.
+  - **suggestion_food_bank**: `food_bank_id` references `food_banks` by key only; name/address are looked up via the FK at read time instead of being copied in, so there's no transitive dependency on `food_banks`' non-key columns.
   - **facility** and **food_banks**: Standalone reference data; no transitive dependencies.
 
 ### Summary
 
-| Table        | 1NF | 2NF | 3NF |
-|-------------|-----|-----|-----|
-| inventory   | ✓   | ✓   | ✓   |
-| sales       | ✓   | ✓   | ✓   |
-| consumption | ✓   | ✓   | ✓   |
-| demand      | ✓   | ✓   | ✓   |
-| suggestions | ✓   | ✓   | ✓   |
-| facility    | ✓   | ✓   | ✓   |
-| food_banks  | ✓   | ✓   | ✓   |
+| Table                 | 1NF | 2NF | 3NF |
+|-----------------------|-----|-----|-----|
+| inventory              | ✓   | ✓   | ✓   |
+| sales                  | ✓   | ✓   | ✓   |
+| consumption            | ✓   | ✓   | ✓   |
+| demand                 | ✓   | ✓   | ✓   |
+| suggestions            | ✓   | ✓   | ✓   |
+| vendor                 | ✓   | ✓   | ✓   |
+| suggestion_food_bank   | ✓   | ✓   | ✓   |
+| facility               | ✓   | ✓   | ✓   |
+| food_banks             | ✓   | ✓   | ✓   |
 
 The schema is in **third normal form (3NF)**.
 
 **Notes:**
-- **suggestions**: AI-generated recommendations; `inventory_id` FK links to the item. `donation_info` (TEXT) stores JSON of nearest food banks when the action is donate/discard (no FK to `food_banks`).
-- **facility**: Store/warehouse location (lat/lon) used by the Food Bank agent as the origin for “nearest” distance.
-- **food_banks**: Reference list of food banks (name, address, lat/lon); Food Bank agent computes nearest by distance. No FK from other tables; `suggestions.donation_info` holds a snapshot of suggested food banks per recommendation.
-
-Optional improvement: introduce a `vendor` table and reference it from `inventory` and `sales` if you add vendor-specific attributes (name, address, etc.) to avoid repeating them.
+- **suggestions**: AI-generated recommendations; `inventory_id` FK links to the item. `donation_info` (TEXT) is a deprecated JSON snapshot of nearest food banks, kept only so suggestions written before `suggestion_food_bank` existed still render; new rows are written to `suggestion_food_bank` instead (see below).
+- **suggestion_food_bank**: Normalized nearest-food-bank match per suggestion (`suggestion_id` FK, `food_bank_id` FK, `rank`, `distance_mi`). One row per match instead of a JSON array in a TEXT column, so matches can be queried/joined/indexed and don't duplicate `food_banks.name`/`address`.
+- **vendor**: Referenced from `inventory.vendor_id` and `sales.vendor_id` (both FK, `database/migrations/add_vendor_table.sql`). Previously `vendor_id` was a bare code with no lookup entity or referential integrity.
+- **facility**: Store/warehouse location (lat/lon) used by the Food Bank agent as the origin for "nearest" distance.
+- **food_banks**: Reference list of food banks (name, address, lat/lon); Food Bank agent computes nearest by distance; referenced by `suggestion_food_bank.food_bank_id`.

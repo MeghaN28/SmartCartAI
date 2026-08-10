@@ -16,10 +16,14 @@ DB_NAME = "smartcart_ai"
 WASTE_ACTIONS = {"discount", "donate", "bundle", "discard"}
 ACTION_SHARE_KEYS = ["bundle", "discount", "discard", "donate", "reorder"]
 
-EVALUATION_DATE = pd.Timestamp("2026-03-13")
+EVALUATION_DATE = pd.Timestamp.today().normalize()
 
 CORPORATE_TAX_RATE = 0.21
-DONATION_VALUE_ESTIMATE = 200
+# Donation value is no longer a flat per-unit constant (reviewer feedback: "$200 per
+# item... no reasonable explanation of source, units of measurement are missing").
+# It is now each donated item's opening_stock x its own inventory.selling_price
+# (USD/unit), i.e. fair-market retail value of the donated units -- the standard
+# basis used for valuing in-kind inventory donations.
 
 
 def fetch_df(query: str) -> pd.DataFrame:
@@ -134,7 +138,7 @@ def build_tax_chart(donation_value, tax_rate, path):
     )
 
     ax.set_title("Tax Benefit from Food Donation")
-    ax.set_ylabel("USD")
+    ax.set_ylabel("USD (item selling_price basis)")
 
     for bar in bars:
         ax.annotate(
@@ -238,7 +242,7 @@ def build_donation_savings_chart(donation_value, tax_savings, total_benefit, pat
     )
 
     ax.set_title("Corporate benefit from donations")
-    ax.set_ylabel("USD")
+    ax.set_ylabel("USD (item selling_price basis)")
 
     for bar in bars:
         ax.annotate(
@@ -297,11 +301,17 @@ def print_waste_summary(total_inventory_stock, total_expiring_stock, recovered_d
 
 def main():
 
+    # Restricted to item_type = 'Perishable' (reviewer feedback: "I would first
+    # completely remove non-perishable items from your analysis -- especially if you
+    # are going to stick with waste mitigation and elimination of waste"). Waste,
+    # spoilage, and donation only make sense for items that can actually spoil.
     inventory = fetch_df(
-        "SELECT inventory_id, item_name, opening_stock, expiry_date FROM inventory"
+        "SELECT inventory_id, item_name, opening_stock, expiry_date, selling_price "
+        "FROM inventory WHERE item_type = 'Perishable'"
     )
 
     inventory["expiry_date"] = pd.to_datetime(inventory["expiry_date"])
+    inventory["selling_price"] = pd.to_numeric(inventory["selling_price"], errors="coerce")
 
     near_cutoff = EVALUATION_DATE + pd.Timedelta(days=7)
 
@@ -316,6 +326,13 @@ def main():
     suggestions["action"] = suggestions["action"].str.lower()
     for column in ["current_stock", "min_stock", "forecasted_demand"]:
         suggestions[column] = pd.to_numeric(suggestions[column], errors="coerce").fillna(0)
+
+    # Keep the "remove non-perishable items" fix consistent everywhere downstream
+    # (action distribution, bundle/discount/donate shares, etc.), not just the
+    # expiring/resolved calculation above -- otherwise suggestions for non-perishable
+    # items (e.g. reorder/discard/bundle recommendations on shelf-stable goods) would
+    # still leak into the "waste reduction" figures via their current_stock fallback.
+    suggestions = suggestions[suggestions["inventory_id"].isin(set(inventory["inventory_id"]))]
 
     action_counts = (
         suggestions[suggestions["action"].isin(WASTE_ACTIONS)]
@@ -384,11 +401,17 @@ def main():
         inventory["inventory_id"].isin(discarded_ids)
     ]["opening_stock"].sum()
 
-    donate_stock = inventory[
-        inventory["inventory_id"].isin(donate_ids)
-    ]["opening_stock"].sum()
+    donated_items = inventory[inventory["inventory_id"].isin(donate_ids)].copy()
+    donate_stock = donated_items["opening_stock"].sum()
 
-    donation_value = donate_stock * DONATION_VALUE_ESTIMATE
+    # Per-item value = units donated x that item's own selling_price (USD/unit),
+    # summed across donated items. Items missing a selling_price contribute $0
+    # rather than crashing or silently assuming a flat rate.
+    donated_items["item_donation_value"] = (
+        donated_items["opening_stock"] * donated_items["selling_price"].fillna(0)
+    )
+    donation_value = donated_items["item_donation_value"].sum()
+    donation_value_per_unit = (donation_value / donate_stock) if donate_stock else 0
 
     resolution_percent = (
         100 * resolved_stock / total_expiring_stock
@@ -487,9 +510,9 @@ def main():
         "analysis/stockout_prevention.png"
     )
 
-    print("\nEVALUATION SUMMARY\n")
+    print("\nEVALUATION SUMMARY (perishable items only: item_type = 'Perishable')\n")
 
-    print(f"Total inventory stock units: {total_inventory_stock}")
+    print(f"Total perishable inventory stock units: {total_inventory_stock}")
 
     print(f"Expiring stock units (<=7 days): {total_expiring_stock}")
 
@@ -506,11 +529,13 @@ def main():
 
     print(f"Discarded unsafe stock: {discard_stock}")
 
-    print(f"Donated stock: {donate_stock}")
+    print(f"Donated stock: {donate_stock} units")
 
-    print(f"Estimated donation revenue saved: ${donation_value:,.2f}")
+    print(f"Donation value basis: sum(units donated x item selling_price in USD/unit)")
 
-    print(f"Estimated tax savings from donations: ${tax_savings:,.2f}")
+    print(f"Estimated donation value: ${donation_value:,.2f} (avg ${donation_value_per_unit:,.2f}/unit across donated items)")
+
+    print(f"Estimated tax savings from donations (21% corporate rate): ${tax_savings:,.2f}")
 
     print(f"Combined donation benefit: ${donation_total_benefit:,.2f}")
 

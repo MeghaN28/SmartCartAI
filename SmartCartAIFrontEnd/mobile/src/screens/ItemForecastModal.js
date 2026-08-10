@@ -18,8 +18,10 @@ export default function ItemForecastModal({ item, parsed, onClose }) {
 
   if (!item || !parsed) return null;
 
-  const { currentStock, reorderLevel, lowStock, actions, recommendation, priority, reasoning, expectedOutcome, riskAssessment, costImpact, salesChart, demandChart, stockChart, metrics } = parsed;
+  const { currentStock, reorderLevel, lowStock, actions, recommendation, priority, reasoning, expectedOutcome, riskAssessment, costImpact, salesChart, demandChart, stockChart, metrics, itemDetails } = parsed;
   const width = Dimensions.get('window').width - spacing.lg * 4;
+
+  const dateTypeLabel = { sell_by: 'Sell by', use_by: 'Use by', best_by: 'Best by' }[itemDetails?.expiryDateType] || 'Expiry';
 
   const barData = {
     labels: (stockChart && stockChart.labels) || ['Stock', 'Reorder'],
@@ -58,6 +60,22 @@ export default function ItemForecastModal({ item, parsed, onClose }) {
                   </View>
                 )}
               </View>
+            </View>
+          )}
+
+          {itemDetails && (itemDetails.sellingPrice != null || itemDetails.expiryDate) && (
+            <View style={[styles.metricsBox, { backgroundColor: c.card, borderColor: c.border }]}>
+              <Text style={[styles.sectionTitle, { color: c.text }]}>Item Details</Text>
+              {itemDetails.sellingPrice != null && (
+                <Text style={[styles.metricText, { color: c.textSecondary }]}>
+                  Selling Price: ${Number(itemDetails.sellingPrice).toFixed(2)}
+                </Text>
+              )}
+              {itemDetails.expiryDate && (
+                <Text style={[styles.metricText, { color: c.textSecondary }]}>
+                  {dateTypeLabel}: {itemDetails.expiryDate}
+                </Text>
+              )}
             </View>
           )}
 

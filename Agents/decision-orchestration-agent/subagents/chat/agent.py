@@ -84,7 +84,7 @@ def get_near_expiry_items(within_days: int = 14) -> List[Dict]:
             cur.execute("""
                 SELECT inventory_id, item_name, category, form, usage, item_type,
                        opening_stock as remaining_stock, min_stock, max_capacity,
-                       vendor_id, expiry_date, selling_price
+                       vendor_id, expiry_date, expiry_date_type, selling_price
                 FROM inventory
                 WHERE expiry_date IS NOT NULL
                   AND expiry_date <= CURRENT_DATE + INTERVAL '1 day' * %s
@@ -251,7 +251,7 @@ def get_perishable_items(limit: int = 30) -> List[Dict]:
             """
             SELECT inventory_id, item_name, category, form, usage, item_type,
                    opening_stock as remaining_stock, min_stock, max_capacity,
-                   vendor_id, expiry_date, selling_price
+                   vendor_id, expiry_date, expiry_date_type, selling_price
             FROM inventory
             ORDER BY item_name ASC
             LIMIT %s
@@ -289,7 +289,7 @@ def get_non_perishable_items(limit: int = 30) -> List[Dict]:
             """
             SELECT inventory_id, item_name, category, form, usage, item_type,
                    opening_stock as remaining_stock, min_stock, max_capacity,
-                   vendor_id, expiry_date, selling_price
+                   vendor_id, expiry_date, expiry_date_type, selling_price
             FROM inventory
             ORDER BY item_name ASC
             LIMIT %s
@@ -851,9 +851,9 @@ def save_suggestion(user_query: str, item: Dict, recommendation: Dict) -> Option
             INSERT INTO suggestions (
                 inventory_id, item_name, user_query, action, priority, reasoning,
                 expected_outcome, risk_level, risk_score, is_feasible,
-                estimated_cost, within_budget, explanation, current_stock,
+                estimated_cost, within_budget, explanation, bundle_suggestion, current_stock,
                 min_stock, forecasted_demand, status, donation_info, created_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
             RETURNING suggestion_id
         """, (
             item['inventory_id'],
@@ -869,6 +869,7 @@ def save_suggestion(user_query: str, item: Dict, recommendation: Dict) -> Option
             cost.get('estimated_cost', 0),
             cost.get('within_budget', True),
             explanation.get('explanation', '') if isinstance(explanation, dict) else str(explanation),
+            rec.get('bundle_suggestion'),
             item.get('remaining_stock', 0),
             item.get('min_stock', 0),
             recommendation.get('forecasted_demand', 0.0),
@@ -877,6 +878,20 @@ def save_suggestion(user_query: str, item: Dict, recommendation: Dict) -> Option
         ))
         
         suggestion_id = cur.fetchone()['suggestion_id']
+
+        # Normalized nearest-food-bank matches (supersedes the donation_info JSON blob above,
+        # which is kept only so pre-migration rows still render in the UI).
+        nearest_food_banks = rec.get('nearest_food_banks') or []
+        for rank, fb in enumerate(nearest_food_banks, start=1):
+            food_bank_id = fb.get('food_bank_id')
+            if food_bank_id is None:
+                continue
+            cur.execute("""
+                INSERT INTO suggestion_food_bank (suggestion_id, food_bank_id, rank, distance_mi)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (suggestion_id, food_bank_id) DO NOTHING
+            """, (suggestion_id, food_bank_id, rank, fb.get('distance_mi')))
+
         conn.commit()
         cur.close()
         conn.close()
@@ -984,6 +999,17 @@ def _format_recommendation_line(
         if action == "discard":
             return f"Discard {item_name} immediately to eliminate the spoilage or health risk"
         if action == "donate":
+            value = None
+            if item:
+                try:
+                    price = item.get("selling_price")
+                    stock = item.get("remaining_stock", item.get("opening_stock"))
+                    if price is not None and stock is not None:
+                        value = round(float(price) * float(stock), 2)
+                except (TypeError, ValueError):
+                    value = None
+            if value is not None:
+                return f"Donate {item_name} while it is still usable (est. value ${value:,.2f} at ${float(item.get('selling_price')):,.2f}/unit)"
             return f"Donate {item_name} while it is still usable"
         if action == "discount":
             pct = rec.get("suggested_discount_percent")
@@ -1015,13 +1041,15 @@ def _format_recommendation_line(
         if expiry_raw and allow_expiry_signals:
             try:
                 days = days_until_expiry_fn(expiry_raw)
+                date_type = item.get("expiry_date_type")
+                verb = {"sell_by": "sell by", "use_by": "use by", "best_by": "best by"}.get(date_type)
                 if days is not None:
                     if days < 0:
-                        signal_bits.append(f"expired {abs(days)} day(s) ago")
+                        signal_bits.append(f"{verb} date passed {abs(days)} day(s) ago" if verb else f"expired {abs(days)} day(s) ago")
                     elif days == 0:
-                        signal_bits.append("expires today")
+                        signal_bits.append(f"{verb} today" if verb else "expires today")
                     else:
-                        signal_bits.append(f"expires in {days} day(s)")
+                        signal_bits.append(f"{verb} in {days} day(s)" if verb else f"expires in {days} day(s)")
             except Exception:
                 pass
         stock = item.get("remaining_stock")
@@ -1493,7 +1521,8 @@ def process_chat_query(query: str, session_id: str = None, include_eval_context:
             return _build_response("No perishable items found in inventory.")
         lines = ["Perishable items in your inventory:"]
         for r in rows:
-            lines.append(f"• {r.get('item_name', 'Item')} (stock: {r.get('remaining_stock', 0)}, expiry: {r.get('expiry_date') or 'N/A'})")
+            date_label = {"sell_by": "sell by", "use_by": "use by", "best_by": "best by"}.get(r.get("expiry_date_type"), "expiry")
+            lines.append(f"• {r.get('item_name', 'Item')} (stock: {r.get('remaining_stock', 0)}, {date_label}: {r.get('expiry_date') or 'N/A'})")
         return _build_response("\n".join(lines))
     if intent == "non_perishable":
         rows = get_non_perishable_items(limit=50)
@@ -1501,7 +1530,8 @@ def process_chat_query(query: str, session_id: str = None, include_eval_context:
             return _build_response("No non-perishable items found in inventory.")
         lines = ["Non-perishable items in your inventory:"]
         for r in rows:
-            lines.append(f"• {r.get('item_name', 'Item')} (stock: {r.get('remaining_stock', 0)}, expiry: {r.get('expiry_date') or 'N/A'})")
+            date_label = {"sell_by": "sell by", "use_by": "use by", "best_by": "best by"}.get(r.get("expiry_date_type"), "expiry")
+            lines.append(f"• {r.get('item_name', 'Item')} (stock: {r.get('remaining_stock', 0)}, {date_label}: {r.get('expiry_date') or 'N/A'})")
         return _build_response("\n".join(lines))
     if intent == "high_demand":
         rows = get_demand_ranked_items(high=True)

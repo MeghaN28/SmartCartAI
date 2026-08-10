@@ -85,7 +85,7 @@ def _find_item(cur, query: str) -> Optional[Dict[str, Any]]:
                COALESCE(opening_stock, 0) AS opening_stock,
                COALESCE(min_stock, 0) AS min_stock,
                COALESCE(max_capacity, 0) AS max_capacity,
-               selling_price
+               selling_price, expiry_date, expiry_date_type
         FROM inventory
         WHERE item_name ILIKE %s OR category ILIKE %s
         ORDER BY CASE WHEN item_name ILIKE %s THEN 0 ELSE 1 END, item_name ASC
@@ -241,6 +241,9 @@ def _build_item_insights(query: str) -> Dict[str, Any]:
                 "category": item.get("category"),
                 "item_type": item.get("item_type"),
                 "vendor_id": item.get("vendor_id"),
+                "selling_price": _to_float(item.get("selling_price")) if item.get("selling_price") is not None else None,
+                "expiry_date": item["expiry_date"].isoformat() if item.get("expiry_date") else None,
+                "expiry_date_type": item.get("expiry_date_type"),
             },
             "metrics": metrics,
             "recommendation": recommendation,

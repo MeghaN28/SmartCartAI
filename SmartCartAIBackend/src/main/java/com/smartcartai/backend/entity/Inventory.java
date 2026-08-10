@@ -47,6 +47,10 @@ public class Inventory {
     @Column(name = "expiry_date")
     private java.time.LocalDate expiryDate;
 
+    /** Label semantics for expiryDate: sell_by, use_by, or best_by. */
+    @Column(name = "expiry_date_type", length = 10)
+    private String expiryDateType;
+
     @Column(name = "selling_price", precision = 12, scale = 2)
     private java.math.BigDecimal sellingPrice;
 }

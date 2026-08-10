@@ -2,6 +2,7 @@ package com.smartcartai.backend.entity;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -9,6 +10,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -44,6 +46,9 @@ public class Suggestion {
     @Column(name = "expected_outcome", columnDefinition = "TEXT")
     private String expectedOutcome;
 
+    @Column(name = "bundle_suggestion", columnDefinition = "TEXT")
+    private String bundleSuggestion;
+
     @Column(name = "risk_level", length = 20)
     private String riskLevel;
 
@@ -77,7 +82,14 @@ public class Suggestion {
     @Column(name = "status", length = 20)
     private String status;
 
-    /** JSON or text: nearest food bank(s) when action is discard/donate. */
+    /**
+     * Legacy JSON snapshot of nearest food bank(s), kept only for suggestions written
+     * before the suggestion_food_bank table existed. New rows populate foodBanks instead.
+     */
     @Column(name = "donation_info", columnDefinition = "TEXT")
     private String donationInfo;
+
+    /** Normalized nearest-food-bank matches, joined in from suggestion_food_bank. Not a mapped column. */
+    @Transient
+    private List<SuggestionFoodBank> foodBanks;
 }
