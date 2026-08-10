@@ -38,6 +38,11 @@ public final class McpStreamableHttpClient {
     public McpStreamableHttpClient(String mcpEndpointUrl, ObjectMapper mapper) {
         this.http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
+                // Uvicorn (FastMCP's ASGI server) doesn't support the HTTP/2 cleartext
+                // (h2c) upgrade that HttpClient attempts by default on the first request
+                // of a connection ("Unsupported upgrade request" server-side), which
+                // corrupts the request and surfaces as a JSON parse error. Pin HTTP/1.1.
+                .version(HttpClient.Version.HTTP_1_1)
                 .build();
         this.mapper = mapper;
         this.mcpEndpoint = URI.create(mcpEndpointUrl);

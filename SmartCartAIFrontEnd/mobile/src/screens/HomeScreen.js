@@ -59,6 +59,7 @@ export default function HomeScreen() {
           quantity: item.openingStock ?? item.current_stock ?? 0,
           threshold: item.minStock ?? item.min_stock ?? 0,
           expiryDate: item.expiryDate || item.expiry_date || null,
+          expiryDateType: item.expiryDateType || item.expiry_date_type || null,
           sellingPrice: item.sellingPrice ?? item.selling_price ?? null,
         }));
         setInventory(formatted);

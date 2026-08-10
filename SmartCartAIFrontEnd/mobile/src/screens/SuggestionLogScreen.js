@@ -244,24 +244,31 @@ export default function SuggestionLogScreen() {
             )}
 
             {(() => {
-              try {
-                const raw = suggestion.donationInfo;
-                if (!raw || typeof raw !== 'string') return null;
-                const arr = JSON.parse(raw);
-                if (!Array.isArray(arr) || arr.length === 0) return null;
-                const names = arr.map((fb) => fb?.name).filter(Boolean);
-                const withAddress = arr.map((fb) => fb?.address ? `${fb.name || 'Food bank'}: ${fb.address}` : (fb.name || 'Food bank')).filter(Boolean);
-                return (
-                  <View style={styles.section}>
-                    <Text style={[styles.label, { color: c.textSecondary }]}>Donate to</Text>
-                    <Text style={[styles.outcomeText, { color: c.text }]}>
-                      {withAddress.length ? withAddress.join('\n') : names.join(', ')}
-                    </Text>
-                  </View>
-                );
-              } catch (_) {
-                return null;
+              // Prefer the normalized suggestion_food_bank join (foodBanks); fall back to the
+              // legacy donationInfo JSON blob for suggestions saved before that table existed.
+              let arr = Array.isArray(suggestion.foodBanks) ? suggestion.foodBanks : null;
+              if (!arr) {
+                try {
+                  const raw = suggestion.donationInfo;
+                  if (raw && typeof raw === 'string') {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) arr = parsed;
+                  }
+                } catch (_) {
+                  arr = null;
+                }
               }
+              if (!arr || arr.length === 0) return null;
+              const names = arr.map((fb) => fb?.name).filter(Boolean);
+              const withAddress = arr.map((fb) => fb?.address ? `${fb.name || 'Food bank'}: ${fb.address}` : (fb.name || 'Food bank')).filter(Boolean);
+              return (
+                <View style={styles.section}>
+                  <Text style={[styles.label, { color: c.textSecondary }]}>Donate to</Text>
+                  <Text style={[styles.outcomeText, { color: c.text }]}>
+                    {withAddress.length ? withAddress.join('\n') : names.join(', ')}
+                  </Text>
+                </View>
+              );
             })()}
 
             {showBundleSuggestion && (

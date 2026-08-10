@@ -12,9 +12,13 @@ export default function InventoryCard({ item, getStockStatus, statusLabels, stat
   const daysUntilExpiry = getDaysUntilExpiry ? getDaysUntilExpiry(item.expiryDate) : null;
   const expirySoon = daysUntilExpiry != null && daysUntilExpiry <= 14;
   const expired = daysUntilExpiry != null && daysUntilExpiry < 0;
-  const expiryLabel = expired ? 'Expired' : `Expires in ${daysUntilExpiry}d`;
-  const expiryTagBg = expired ? '#f8717166' : '#f9731633';
-  const expiryTagColor = expired ? '#dc2626' : '#f97316';
+  // sell_by/use_by/best_by carry different urgency: use_by is a food-safety cutoff,
+  // sell_by is a retailer stocking cutoff, best_by is quality-only.
+  const dateTypeLabel = { sell_by: 'Sell by', use_by: 'Use by', best_by: 'Best by' }[item.expiryDateType] || 'Expires';
+  const expiryLabel = expired ? 'Expired' : `${dateTypeLabel} in ${daysUntilExpiry}d`;
+  const expiryTagBg = expired ? '#f8717166' : item.expiryDateType === 'use_by' ? '#dc262633' : '#f9731633';
+  const expiryTagColor = expired ? '#dc2626' : item.expiryDateType === 'use_by' ? '#dc2626' : '#f97316';
+  const priceLabel = item.sellingPrice != null ? `$${Number(item.sellingPrice).toFixed(2)}` : null;
 
   return (
     <View
@@ -47,11 +51,14 @@ export default function InventoryCard({ item, getStockStatus, statusLabels, stat
             </Text>
           </View>
           {expirySoon && (
-            <View style={[styles.statusTag, { backgroundColor: expiryTagBg }]}> 
-              <Text style={[styles.statusText, { color: expiryTagColor }]}> 
+            <View style={[styles.statusTag, { backgroundColor: expiryTagBg }]}>
+              <Text style={[styles.statusText, { color: expiryTagColor }]}>
                 {expiryLabel}
               </Text>
             </View>
+          )}
+          {priceLabel && (
+            <Text style={[styles.tag, { color: c.textSecondary }]}>{priceLabel}</Text>
           )}
         </View>
         <View style={styles.progressWrap}>

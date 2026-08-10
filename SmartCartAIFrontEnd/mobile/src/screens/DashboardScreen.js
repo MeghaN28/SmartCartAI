@@ -327,6 +327,11 @@ export default function DashboardScreen() {
         demandChart: charts.demand || null,
         stockChart: charts.stock || null,
         metrics,
+        itemDetails: {
+          sellingPrice: item.selling_price ?? null,
+          expiryDate: item.expiry_date ?? null,
+          expiryDateType: item.expiry_date_type ?? null,
+        },
       });
       setShowModal(true);
     } catch (err) {
